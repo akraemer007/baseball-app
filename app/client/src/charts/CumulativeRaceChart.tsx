@@ -207,7 +207,7 @@ export function CumulativeRaceChart({
               fontSize={10}
               fontFamily="var(--mono)"
               fill="rgba(143, 163, 192, 0.85)"
-              textTransform="uppercase"
+              style={{ textTransform: 'uppercase' }}
             >
               {yLabel}
             </text>

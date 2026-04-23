@@ -67,7 +67,7 @@ export interface QueryOptions {
   schema?: string;
 }
 
-export async function query<T extends Record<string, unknown>>(
+export async function query<T = Record<string, unknown>>(
   sql: string,
   options: QueryOptions = {}
 ): Promise<T[]> {
