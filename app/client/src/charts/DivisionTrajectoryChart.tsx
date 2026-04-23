@@ -52,12 +52,17 @@ export function DivisionTrajectoryChart({
 
     const maxGames = d3.max(divTrajectories, (d) => d3.max(d.points, (p) => p.gamesPlayed)) ?? 162;
     const allY = divTrajectories.flatMap((t) => t.points.map((p) => p.wMinusL));
-    const yMax = Math.max(20, Math.abs(d3.max(allY) ?? 0));
-    const yMin = Math.min(-20, d3.min(allY) ?? 0);
-    const yBound = Math.max(Math.abs(yMax), Math.abs(yMin));
+    // Dynamic y range: symmetric around 0, sized to the actual data plus padding.
+    // Minimum bound of 3 keeps very-early-season charts from looking jumpy.
+    const absMax = Math.max(3, Math.abs(d3.max(allY) ?? 0), Math.abs(d3.min(allY) ?? 0));
+    const yBound = Math.ceil(absMax * 1.15);
 
     const x = d3.scaleLinear().domain([0, maxGames]).range([0, innerW]);
     const y = d3.scaleLinear().domain([-yBound, yBound]).range([innerH, 0]);
+
+    // Choose 4-6 symmetric ticks within the current bound.
+    const rawTicks = y.ticks(5);
+    const yTicks = Array.from(new Set(rawTicks.concat([0]))).sort((a, b) => a - b);
 
     return {
       margin,
@@ -66,6 +71,7 @@ export function DivisionTrajectoryChart({
       x,
       y,
       yBound,
+      yTicks,
       maxGames,
       divTrajectories,
     };
@@ -79,7 +85,7 @@ export function DivisionTrajectoryChart({
     );
   }
 
-  const { margin, innerW, innerH, x, y, maxGames, divTrajectories } = chart;
+  const { margin, innerW, innerH, x, y, yTicks, maxGames, divTrajectories } = chart;
 
   const lineGen = d3
     .line<{ gamesPlayed: number; wMinusL: number }>()
@@ -92,7 +98,7 @@ export function DivisionTrajectoryChart({
       <svg width={width} height={height}>
         <g transform={`translate(${margin.left}, ${margin.top})`}>
           {/* Horizontal reference lines */}
-          {[-20, -10, 0, 10, 20].map((v) => (
+          {yTicks.map((v) => (
             <line
               key={v}
               x1={0}
@@ -106,7 +112,7 @@ export function DivisionTrajectoryChart({
           ))}
 
           {/* Y axis labels */}
-          {[-20, -10, 0, 10, 20].map((v) => (
+          {yTicks.map((v) => (
             <text
               key={`yl-${v}`}
               x={-6}
