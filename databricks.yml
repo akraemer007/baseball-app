@@ -1,0 +1,33 @@
+bundle:
+  name: ak-baseball
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: "Unity Catalog catalog to hold bronze/silver/gold tables"
+    default: "production_forecasting_catalog"
+  schema:
+    description: "Schema within the catalog"
+    default: "ak_baseball"
+  warehouse_id:
+    description: "SQL Warehouse for gold SQL + the app"
+  foundation_model_endpoint:
+    description: "Foundation Model endpoint used for news recaps"
+    default: "databricks-claude-haiku-4-5"
+  seasons_back:
+    description: "How many completed seasons to keep (current season is implicit)"
+    default: "3"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      profile: fe-vm-production-forecasting
+
+  prod:
+    mode: production
+    workspace:
+      profile: fe-vm-production-forecasting

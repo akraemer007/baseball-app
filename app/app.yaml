@@ -1,0 +1,12 @@
+command: ['sh', '-c', 'npm run build && npm run start']
+env:
+  - name: 'NODE_ENV'
+    value: 'production'
+  - name: 'DATABRICKS_WAREHOUSE_ID'
+    valueFrom: 'sql-warehouse'
+  - name: 'DATABRICKS_CATALOG'
+    value: 'production_forecasting_catalog'
+  - name: 'DATABRICKS_SCHEMA'
+    value: 'ak_baseball'
+  - name: 'USE_REAL_SQL'
+    value: 'true'

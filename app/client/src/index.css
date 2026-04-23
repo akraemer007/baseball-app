@@ -1,0 +1,404 @@
+/* Global styles: dark navy Jon Bois-ish aesthetic. */
+
+:root {
+  --bg: #0a1628;
+  --bg-elev: #112036;
+  --border: #1e3354;
+  --text: #e8eef7;
+  --text-dim: #8fa3c0;
+  --accent: #f5d06f;
+  --accent-hot: #e74c3c;
+  --cubs-blue: #0e3386;
+  --cubs-red: #cc3433;
+  --mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 0.5em 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: 2rem;
+}
+
+h2 {
+  font-size: 1.4rem;
+}
+
+h3 {
+  font-size: 1.1rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+code,
+.mono {
+  font-family: var(--mono);
+}
+
+/* Layout primitives */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.page {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.card h2 {
+  margin-top: 0;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 800px) {
+  .grid-2,
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* NavBar */
+.navbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #07101f;
+  border-bottom: 1px solid var(--border);
+}
+
+.navbar-brand {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+}
+
+.navbar a {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.navbar a.active,
+.navbar a:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* Utility */
+.muted {
+  color: var(--text-dim);
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-family: var(--mono);
+  background: var(--border);
+  color: var(--text);
+}
+
+.pill.upset {
+  background: var(--accent-hot);
+  color: #fff;
+}
+
+table.stat-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.stat-table th,
+table.stat-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+table.stat-table th {
+  color: var(--text-dim);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.75rem;
+}
+
+table.stat-table td.num {
+  font-family: var(--mono);
+  text-align: right;
+}
+
+/* Division trajectory grid */
+.division-grid {
+  gap: 0.75rem;
+}
+
+.division-card {
+  padding: 0.75rem 0.85rem 0.5rem;
+}
+
+.division-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.division-header h3 {
+  margin: 0;
+}
+
+.team-chips {
+  display: flex;
+  gap: 0.2rem;
+  flex-wrap: wrap;
+}
+
+.team-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-dim);
+  background: rgba(30, 51, 84, 0.4);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.team-chip.active {
+  color: var(--text);
+  background: rgba(30, 51, 84, 0.9);
+}
+
+.team-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.team-chip:hover {
+  text-decoration: none;
+  color: var(--text);
+}
+
+@media (max-width: 1100px) {
+  .division-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .division-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Percentile bars (Team page) */
+.percentile-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.percentile-row {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.percentile-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+}
+
+.percentile-bar-wrap {
+  position: relative;
+  height: 8px;
+  background: rgba(30, 51, 84, 0.9);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.percentile-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 250ms ease-out;
+}
+
+.percentile-median {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 1px;
+  background: rgba(232, 238, 247, 0.4);
+}
+
+.percentile-foot {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* News page */
+.news-date-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.date-input {
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.proj-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.proj-card {
+  background: rgba(30, 51, 84, 0.3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+}
+
+.proj-matchup {
+  font-size: 0.95rem;
+}
+
+.proj-lean {
+  font-size: 0.8rem;
+  margin: 0.1rem 0;
+}
+
+.recap-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.recap-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  padding: 1rem 1.25rem;
+}
+
+.recap-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.recap-headline {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.recap-body {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 1.55;
+  margin: 0.5rem 0;
+}
+
+.recap-dateline {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.recap-foot {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 0.5rem;
+}

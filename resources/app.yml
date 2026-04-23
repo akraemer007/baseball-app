@@ -1,0 +1,12 @@
+resources:
+  apps:
+    ak_baseball_app:
+      name: "ak-baseball-${bundle.target}"
+      description: "Personal MLB stats viewer — league/team/player/news pages"
+      source_code_path: ../app
+      resources:
+        - name: sql-warehouse
+          description: "SQL Warehouse for querying gold_* tables"
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE

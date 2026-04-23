@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+.DS_Store
+*.pyc
+__pycache__/
+.venv/
+.env
+.env.local
+.databricks/
+.databricks-bundle/
+.databricks-resources.json
+.vscode/
+.idea/
+coverage/
+*.log
+
+# Personal / machine-local
+.claude/
+.ai-dev-kit/
+.mcp.json

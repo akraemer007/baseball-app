@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Build outputs
+server/dist/
+client/dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Databricks
+.databricks/
