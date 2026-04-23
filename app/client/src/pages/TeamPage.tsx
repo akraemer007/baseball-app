@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { apiGet } from '../lib/api';
@@ -147,7 +147,8 @@ export default function TeamPage() {
                     <tr key={g.gameId}>
                       <td className="mono">{g.date.slice(5)}</td>
                       <td>
-                        {g.awayTeamId} @ {g.homeTeamId}
+                        <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
+                        <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
                       </td>
                       <td className="num">
                         <span
@@ -183,7 +184,8 @@ export default function TeamPage() {
                   <tr key={g.gameId}>
                     <td className="mono">{g.date.slice(5)}</td>
                     <td>
-                      {g.awayTeamId} @ {g.homeTeamId}
+                      <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
+                      <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
                     </td>
                     <td className="num">{(g.impliedHomeWinProb * 100).toFixed(0)}%</td>
                   </tr>
@@ -194,5 +196,17 @@ export default function TeamPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function TeamLink({ abbrev, currentId }: { abbrev: string; currentId: string }) {
+  if (abbrev.toUpperCase() === currentId.toUpperCase()) {
+    // Current team — render as plain text so it's visually clear who's "us"
+    return <span className="mono">{abbrev}</span>;
+  }
+  return (
+    <Link to={`/team/${abbrev}`} className="mono team-matchup-link">
+      {abbrev}
+    </Link>
   );
 }

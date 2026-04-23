@@ -279,6 +279,18 @@ table.stat-table td.num {
   color: var(--text);
 }
 
+.team-matchup-link {
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border);
+}
+
+.team-matchup-link:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  text-decoration: none;
+}
+
 .division-header {
   display: flex;
   justify-content: space-between;
