@@ -622,22 +622,22 @@ table.stat-table td.num {
 
 .percentile-median {
   position: absolute;
-  top: -4px;
-  bottom: -4px;
+  top: -6px;
+  bottom: -6px;
   left: 50%;
-  width: 1px;
-  background: rgba(10, 22, 40, 0.45);
+  width: 2px;
+  background: #000;
   outline: none;
   cursor: help;
   /* Expand the hit target left/right without widening the visible tick */
-  padding: 0 5px;
-  margin-left: -5px;
+  padding: 0 6px;
+  margin-left: -7px;
   background-clip: content-box;
 }
 
 .percentile-median:hover,
 .percentile-median:focus {
-  background-color: rgba(10, 22, 40, 0.7);
+  background-color: var(--accent);
 }
 
 .percentile-median-tip {
