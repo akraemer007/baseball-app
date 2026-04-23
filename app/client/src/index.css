@@ -624,20 +624,27 @@ table.stat-table td.num {
   position: absolute;
   top: -6px;
   bottom: -6px;
-  left: 50%;
+  left: calc(50% - 1px);
   width: 2px;
   background: #000;
   outline: none;
   cursor: help;
-  /* Expand the hit target left/right without widening the visible tick */
-  padding: 0 6px;
-  margin-left: -7px;
-  background-clip: content-box;
+  z-index: 2;
+}
+
+/* Wider invisible hit area so the 2px tick is easy to hover. */
+.percentile-median::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: -8px;
+  right: -8px;
 }
 
 .percentile-median:hover,
 .percentile-median:focus {
-  background-color: var(--accent);
+  background: var(--accent);
 }
 
 .percentile-median-tip {
