@@ -14,6 +14,32 @@ const CATEGORY_LABELS: Record<'batting' | 'pitching' | 'fielding' | 'overall', s
   fielding: 'Fielding — percentile vs. league',
 };
 
+/**
+ * Explicit display order. Grid fills left-to-right, top-to-bottom, so odd
+ * indices land in the left column and even in the right. Put the classic
+ * rate stats on the left (AVG/OBP/SLG/OPS/OPS+) and the totals + misc
+ * rates on the right.
+ */
+const STAT_ORDER: Record<string, number> = {
+  // Batting — 5 on the left, 5 on the right
+  avg: 1,
+  hits_total: 2,
+  obp: 3,
+  hr_total: 4,
+  slg: 5,
+  walks_total: 6,
+  ops: 7,
+  runs_per_game: 8,
+  ops_plus: 9,
+  hr_per_game: 10,
+  // Pitching
+  era: 11,
+  k_per_9: 12,
+  era_minus: 13,
+  strikeouts_pitching_total: 14,
+  fip: 15,
+};
+
 const STAT_DEFINITIONS: Record<string, string> = {
   run_diff: 'Run differential. Total runs scored minus total runs allowed this season. Strong positive correlates with winning.',
   hits_total: 'Total hits the team has recorded this season.',
@@ -130,7 +156,12 @@ export default function TeamPage() {
       )}
 
       {(['overall', 'batting', 'pitching', 'fielding'] as const).map((cat) => {
-        const rows = percentileStats.filter((s) => s.category === cat);
+        const rows = percentileStats
+          .filter((s) => s.category === cat)
+          .sort(
+            (a, b) =>
+              (STAT_ORDER[a.statKey] ?? 999) - (STAT_ORDER[b.statKey] ?? 999),
+          );
         if (!rows.length) return null;
         return (
           <div key={cat} className="card">
