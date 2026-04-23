@@ -20,6 +20,13 @@ import { query } from '../lib/warehouse.js';
 
 /** Pretty label per stat_name emitted by gold_team_stat_vs_league. */
 export const STAT_LABELS: Record<string, string> = {
+  // Season totals / summary
+  run_diff: 'Run Diff',
+  hits_total: 'Hits',
+  hr_total: 'HR',
+  walks_total: 'BB',
+  strikeouts_pitching_total: 'K (pitching)',
+  // Rates
   runs_per_game: 'R/G',
   hr_per_game: 'HR/G',
   avg: 'AVG',
@@ -37,8 +44,21 @@ export const STAT_LABELS: Record<string, string> = {
 /** Stats where a lower value is better. */
 const LOWER_IS_BETTER = new Set(['era', 'era_minus', 'fip', 'errors_per_game']);
 
+/** Stats that should render as whole integers (no decimals). */
+const INTEGER_STATS = new Set([
+  'run_diff',
+  'hits_total',
+  'hr_total',
+  'walks_total',
+  'strikeouts_pitching_total',
+]);
+
 /** Which card each stat belongs to on the Team page. */
-const STAT_CATEGORIES: Record<string, 'batting' | 'pitching' | 'fielding'> = {
+const STAT_CATEGORIES: Record<string, 'batting' | 'pitching' | 'fielding' | 'overall'> = {
+  run_diff: 'overall',
+  hits_total: 'batting',
+  hr_total: 'batting',
+  walks_total: 'batting',
   avg: 'batting',
   obp: 'batting',
   slg: 'batting',
@@ -46,6 +66,7 @@ const STAT_CATEGORIES: Record<string, 'batting' | 'pitching' | 'fielding'> = {
   ops_plus: 'batting',
   runs_per_game: 'batting',
   hr_per_game: 'batting',
+  strikeouts_pitching_total: 'pitching',
   era: 'pitching',
   era_minus: 'pitching',
   fip: 'pitching',
@@ -53,9 +74,10 @@ const STAT_CATEGORIES: Record<string, 'batting' | 'pitching' | 'fielding'> = {
   errors_per_game: 'fielding',
 };
 
-/** Per-stat value formatting — keeps 3 decimals for slash-line stats, 2 for others. */
+/** Per-stat value formatting — integers for totals, 3 decimals for slash-line stats, 2 for everything else. */
 function formatStatValue(stat: string, raw: number | null | undefined): number {
   if (raw == null) return 0;
+  if (INTEGER_STATS.has(stat)) return Math.round(raw);
   const threeDec = new Set(['avg', 'obp', 'slg', 'ops']);
   return Number(raw.toFixed(threeDec.has(stat) ? 3 : 2));
 }

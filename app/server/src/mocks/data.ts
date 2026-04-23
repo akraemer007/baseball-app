@@ -326,6 +326,11 @@ export function getPlayer(playerId: string, season: number): PlayerResponse {
 /** Mock equivalent of gold_team_stat_vs_league — plausible values per team. */
 export function getStatDistribution(stat: string, season: number) {
   const STAT_DEFS: Record<string, { label: string; range: [number, number]; lowerIsBetter?: boolean; decimals?: number }> = {
+    run_diff: { label: 'Run Diff', range: [-40, 40], decimals: 0 },
+    hits_total: { label: 'Hits', range: [150, 260], decimals: 0 },
+    hr_total: { label: 'HR', range: [15, 45], decimals: 0 },
+    walks_total: { label: 'BB', range: [60, 120], decimals: 0 },
+    strikeouts_pitching_total: { label: 'K (pitching)', range: [150, 260], decimals: 0 },
     runs_per_game: { label: 'R/G', range: [2.8, 5.8] },
     hr_per_game: { label: 'HR/G', range: [0.5, 1.7] },
     avg: { label: 'AVG', range: [0.220, 0.280], decimals: 3 },

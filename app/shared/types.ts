@@ -53,7 +53,7 @@ export interface PercentileStat {
   label: string;
   value: number;
   leagueRankPercentile: number; // 0-100
-  category: 'batting' | 'pitching' | 'fielding';
+  category: 'batting' | 'pitching' | 'fielding' | 'overall';
   /** League-wide mean value for this stat (tied to what the median tick represents). */
   leagueMean?: number;
 }

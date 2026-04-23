@@ -94,6 +94,8 @@ WITH team_totals AS (
         tg.team_id,
         COUNT(DISTINCT tg.game_pk) AS games,
         SUM(tg.runs)       AS runs,
+        -- Opponent's runs in the same game = runs_against for this team.
+        SUM(opp.runs)      AS runs_against,
         SUM(tg.hits)       AS hits,
         SUM(tg.home_runs)  AS home_runs,
         SUM(tg.at_bats)    AS at_bats,
@@ -105,7 +107,8 @@ WITH team_totals AS (
         SUM(tg.walks_pitching) AS walks_pitching,
         SUM(tg.errors)     AS errors
     FROM silver_team_game tg
-    JOIN silver_game g USING (game_pk)
+    JOIN silver_team_game opp ON opp.game_pk = tg.game_pk AND opp.team_id != tg.team_id
+    JOIN silver_game g ON g.game_pk = tg.game_pk
     WHERE g.game_type = 'R' AND g.status = 'Final'
     GROUP BY g.season, tg.team_id
 ),
@@ -178,18 +181,25 @@ team_final AS (
     LEFT JOIN league_avg la USING (season)
 ),
 stat_long AS (
-    SELECT season, team_id, 'runs_per_game' AS stat, runs * 1.0 / NULLIF(games, 0) AS val FROM team_final
-    UNION ALL SELECT season, team_id, 'hr_per_game', home_runs * 1.0 / NULLIF(games, 0) FROM team_final
-    UNION ALL SELECT season, team_id, 'avg', avg FROM team_final
-    UNION ALL SELECT season, team_id, 'obp', obp FROM team_final
-    UNION ALL SELECT season, team_id, 'slg', slg FROM team_final
-    UNION ALL SELECT season, team_id, 'ops', ops FROM team_final
-    UNION ALL SELECT season, team_id, 'ops_plus', ops_plus FROM team_final
-    UNION ALL SELECT season, team_id, 'era', era FROM team_final
-    UNION ALL SELECT season, team_id, 'era_minus', era_minus FROM team_final
-    UNION ALL SELECT season, team_id, 'fip', fip FROM team_final
-    UNION ALL SELECT season, team_id, 'k_per_9', strikeouts_pitching * 9.0 / NULLIF(innings_pitched, 0) FROM team_final
-    UNION ALL SELECT season, team_id, 'errors_per_game', errors * 1.0 / NULLIF(games, 0) FROM team_final
+    -- Season-total counting stats (integers in gold; they rank higher = better)
+    SELECT season, team_id, 'run_diff'      AS stat, (runs - runs_against) * 1.0 AS val FROM team_final
+    UNION ALL SELECT season, team_id, 'hits_total',       hits         * 1.0 FROM team_final
+    UNION ALL SELECT season, team_id, 'hr_total',         home_runs    * 1.0 FROM team_final
+    UNION ALL SELECT season, team_id, 'walks_total',      walks_batting * 1.0 FROM team_final
+    UNION ALL SELECT season, team_id, 'strikeouts_pitching_total', strikeouts_pitching * 1.0 FROM team_final
+    -- Rate stats
+    UNION ALL SELECT season, team_id, 'runs_per_game',    runs * 1.0 / NULLIF(games, 0) FROM team_final
+    UNION ALL SELECT season, team_id, 'hr_per_game',      home_runs * 1.0 / NULLIF(games, 0) FROM team_final
+    UNION ALL SELECT season, team_id, 'avg',              avg FROM team_final
+    UNION ALL SELECT season, team_id, 'obp',              obp FROM team_final
+    UNION ALL SELECT season, team_id, 'slg',              slg FROM team_final
+    UNION ALL SELECT season, team_id, 'ops',              ops FROM team_final
+    UNION ALL SELECT season, team_id, 'ops_plus',         ops_plus FROM team_final
+    UNION ALL SELECT season, team_id, 'era',              era FROM team_final
+    UNION ALL SELECT season, team_id, 'era_minus',        era_minus FROM team_final
+    UNION ALL SELECT season, team_id, 'fip',              fip FROM team_final
+    UNION ALL SELECT season, team_id, 'k_per_9',          strikeouts_pitching * 9.0 / NULLIF(innings_pitched, 0) FROM team_final
+    UNION ALL SELECT season, team_id, 'errors_per_game',  errors * 1.0 / NULLIF(games, 0) FROM team_final
 ),
 with_league AS (
     SELECT

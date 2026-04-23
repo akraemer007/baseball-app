@@ -7,13 +7,19 @@ import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
 import { StatDistributionChart } from '../charts/StatDistributionChart';
 import { InfoTip } from '../components/InfoTip';
 
-const CATEGORY_LABELS: Record<'batting' | 'pitching' | 'fielding', string> = {
+const CATEGORY_LABELS: Record<'batting' | 'pitching' | 'fielding' | 'overall', string> = {
+  overall: 'Overall — percentile vs. league',
   batting: 'Batting — percentile vs. league',
   pitching: 'Pitching — percentile vs. league',
   fielding: 'Fielding — percentile vs. league',
 };
 
 const STAT_DEFINITIONS: Record<string, string> = {
+  run_diff: 'Run differential. Total runs scored minus total runs allowed this season. Strong positive correlates with winning.',
+  hits_total: 'Total hits the team has recorded this season.',
+  hr_total: 'Total home runs hit by this team this season.',
+  walks_total: 'Total walks drawn by this team this season.',
+  strikeouts_pitching_total: 'Total strikeouts recorded by this team’s pitchers this season.',
   avg: 'Batting average. Hits ÷ at-bats. League average is usually around .245.',
   obp: 'On-base percentage. (Hits + walks) ÷ (at-bats + walks). Measures how often a hitter reaches base.',
   slg: 'Slugging percentage. Total bases ÷ at-bats. Measures raw power; a triple is worth 3, a homer 4.',
@@ -123,7 +129,7 @@ export default function TeamPage() {
         </div>
       )}
 
-      {(['batting', 'pitching', 'fielding'] as const).map((cat) => {
+      {(['overall', 'batting', 'pitching', 'fielding'] as const).map((cat) => {
         const rows = percentileStats.filter((s) => s.category === cat);
         if (!rows.length) return null;
         return (
