@@ -4,6 +4,23 @@ import { useMemo } from 'react';
 import { apiGet } from '../lib/api';
 import type { LeagueResponse, TeamResponse } from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
+import { InfoTip } from '../components/InfoTip';
+
+const STAT_DEFINITIONS: Record<string, string> = {
+  avg: 'Batting average. Hits ÷ at-bats. League average is usually around .245.',
+  obp: 'On-base percentage. (Hits + walks) ÷ (at-bats + walks). Measures how often a hitter reaches base.',
+  slg: 'Slugging percentage. Total bases ÷ at-bats. Measures raw power; a triple is worth 3, a homer 4.',
+  ops: 'On-base plus slugging (OBP + SLG). A rough one-number measure of a hitter’s total offense.',
+  ops_plus: 'OPS indexed to league average where 100 = league average. 120 means 20% better than average, 80 means 20% worse.',
+  era: 'Earned runs allowed per 9 innings pitched. Lower is better.',
+  era_minus: 'ERA indexed to league average where 100 = league average. Lower is better: 85 means 15% better than the average staff.',
+  fip: 'Fielding-Independent Pitching. Like ERA but only counts home runs, walks, and strikeouts — the outcomes a pitcher most controls.',
+  k_per_9: 'Strikeouts per 9 innings pitched. Higher is better (for the pitching side).',
+  r_g: 'Runs scored per game.',
+  runs_per_game: 'Runs scored per game.',
+  hr_per_game: 'Home runs per game (by this team’s hitters).',
+  errors_per_game: 'Fielding errors charged per game. Lower is better.',
+};
 
 export default function TeamPage() {
   const { teamId = 'CHC' } = useParams();
@@ -71,19 +88,32 @@ export default function TeamPage() {
       <p className="muted" style={{ marginTop: '0.25rem' }}>
         <span className="mono" style={{ fontSize: '1.1rem', color: 'var(--text)' }}>
           {record.wins}-{record.losses}
-        </span>{' '}
-        ({record.winPct.toFixed(3)}) · GB{' '}
+        </span>
+        <InfoTip>Wins and losses in regular-season games completed this year.</InfoTip>
+        {' '}({record.winPct.toFixed(3)})
+        <InfoTip>Wins divided by games played.</InfoTip>
+        {' '}· GB{' '}
         <span className="mono">{formatGB(record.gamesBehind)}</span>
+        <InfoTip>
+          Games behind the division leader. Each "game" is a full win, so a half-game
+          back means the leader has played one extra game and won it. A dash means
+          this team <em>is</em> the division leader.
+        </InfoTip>
         {' '}· Run diff{' '}
         <span className="mono">
           {record.runDiff >= 0 ? '+' : ''}
           {record.runDiff}
-        </span>{' '}
-        · Streak{' '}
+        </span>
+        <InfoTip>
+          Total runs scored minus total runs allowed this season. Big positives usually
+          track with a good record; large negatives usually don't last.
+        </InfoTip>
+        {' '}· Streak{' '}
         <span className={`pill${streak.type === 'L' ? ' upset' : ''}`}>
           {streak.type}
           {streak.length}
         </span>
+        <InfoTip>Current consecutive wins (W) or losses (L).</InfoTip>
       </p>
 
       {teamDivision && leagueQ.data && (
@@ -105,7 +135,12 @@ export default function TeamPage() {
             {percentileStats.map((s) => (
               <div key={s.statKey} className="percentile-row">
                 <div className="percentile-label">
-                  <span>{s.label}</span>
+                  <span>
+                    {s.label}
+                    {STAT_DEFINITIONS[s.statKey] && (
+                      <InfoTip>{STAT_DEFINITIONS[s.statKey]}</InfoTip>
+                    )}
+                  </span>
                   <span className="muted mono">{s.value}</span>
                 </div>
                 <div className="percentile-bar-wrap">
