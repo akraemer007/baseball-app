@@ -622,11 +622,12 @@ table.stat-table td.num {
 
 .percentile-median {
   position: absolute;
-  top: -6px;
-  bottom: -6px;
+  top: -3px;
+  bottom: -3px;
   left: calc(50% - 1px);
   width: 2px;
   background: #000;
+  border-radius: 1.5px;
   outline: none;
   cursor: help;
   z-index: 2;
