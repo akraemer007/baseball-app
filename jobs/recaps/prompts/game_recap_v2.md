@@ -13,6 +13,16 @@ You will receive a JSON payload with:
 - `upset_flag` — true if winner's implied win prob was under 0.35
 - `home_key_batters` / `away_key_batters` — any batter with 2+ H, 2+ RBI, or ≥1 HR (with season HR/AVG)
 - `starting_pitchers` — one per team, the pitcher with the most innings (with season ERA)
+- `series_context` — shape of the series this game is part of:
+  - `game_number_in_series` (1-4), `games_in_series_so_far` (total so far)
+  - `home_series_wins` / `away_series_wins` after this game
+  - `is_first_game`, `is_last_game`
+  - `status_text` — a short pre-baked summary (e.g. "Game 1 of a 3-game series",
+    "Series tied 1-1 after game 2", "ATL wins the series 2-1").
+  Use this sparingly: reference the series state in at most one sentence,
+  and only when it genuinely adds something (opener, sweep, series win,
+  tied going into a rubber match). Don't mention it on low-interest
+  mid-series games with no special context.
 
 ## Length rules
 

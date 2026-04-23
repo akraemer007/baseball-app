@@ -15,7 +15,7 @@
 import json
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 dbutils.widgets.text("catalog", "production_forecasting_catalog")
@@ -35,6 +35,11 @@ fq = f"{catalog}.{schema}"
 
 sys.path.insert(0, os.path.abspath("../recaps"))
 from interest import score_game_interest  # noqa: E402
+
+# Games between the same two teams within this many days are treated as one
+# series. MLB regular-season series are 2-4 games over 2-4 consecutive days;
+# a gap of more than 5 means the teams left town and came back later.
+SERIES_WINDOW_DAYS = 5
 
 PROMPT_VERSION = "v2"
 MODEL_VERSION = f"{endpoint}:{PROMPT_VERSION}"
@@ -68,6 +73,24 @@ games_df = spark.sql(f"""
 """).toPandas()
 print(f"games to recap: {len(games_df)} (mode={mode}, force={force})")
 
+# Pull all regular-season games this season (any status) so we can derive
+# series context. Win counting uses only Final games; "is this the last
+# game of the series" uses every game in the window so we don't prematurely
+# declare a sweep while a later game is still pending.
+if len(games_df) > 0:
+    seasons_in_scope = sorted({int(s) for s in games_df["season"].unique()})
+    seasons_csv = ",".join(str(s) for s in seasons_in_scope)
+    season_games_df = spark.sql(f"""
+        SELECT game_pk, game_date, season, home_team_id, away_team_id,
+               winner_team_id, home_team_name, away_team_name, status
+        FROM {fq}.silver_game
+        WHERE season IN ({seasons_csv})
+          AND game_type = 'R'
+        ORDER BY game_date, game_pk
+    """).toPandas()
+else:
+    season_games_df = None
+
 # COMMAND ----------
 # MAGIC %md ## Interest scoring (pure Python)
 
@@ -81,6 +104,103 @@ def _parse_json_col(v):
         return json.loads(v)
     except (TypeError, ValueError):
         return []
+
+
+def compute_series_context(row, season_games) -> dict:
+    """Per-game series state: game-number-in-series, current series record,
+    whether this is the last game of the series.
+
+    Returns a dict with:
+        game_number_in_series:   1, 2, 3, 4
+        games_in_series_so_far:  total games played so far (including this one)
+        home_series_wins:        this team's wins in the current series
+        away_series_wins:        opponent's wins in the current series
+        is_first_game:           True if this is game 1
+        is_last_game:            True if no more games in the window after this
+        status_text:             short human summary, e.g.
+                                 "Game 1 of the series"
+                                 "Series tied 1-1 after game 2"
+                                 "ATL leads series 2-1"
+                                 "ATL wins series 2-1"
+    """
+    if season_games is None or len(season_games) == 0:
+        return {"status_text": None}
+    home_id = int(row.home_team_id)
+    away_id = int(row.away_team_id)
+    gd = datetime.fromisoformat(str(row.game_date)).date()
+    pair = {home_id, away_id}
+
+    # Games between these two teams inside ±SERIES_WINDOW_DAYS
+    window = season_games[
+        season_games["home_team_id"].isin(pair)
+        & season_games["away_team_id"].isin(pair)
+        & (season_games["home_team_id"] != season_games["away_team_id"])
+    ].copy()
+    if window.empty:
+        return {"status_text": None}
+    window["game_date_parsed"] = window["game_date"].apply(
+        lambda s: datetime.fromisoformat(str(s)).date()
+    )
+    window["day_diff"] = window["game_date_parsed"].apply(lambda d: abs((d - gd).days))
+    window = window[window["day_diff"] <= SERIES_WINDOW_DAYS].sort_values(
+        ["game_date_parsed", "game_pk"]
+    )
+    if window.empty:
+        return {"status_text": None}
+
+    total_in_window = len(window)
+    # Games played up to and including this one
+    prior_or_this = window[window["game_pk"].le(int(row.game_pk))]
+    # Use the (game_date, game_pk) ordering to decide "is this the last game"
+    after = window[window["game_pk"].gt(int(row.game_pk))]
+    # Better: strictly compare by (game_date, game_pk) tuples
+    ordered_pks = list(window["game_pk"])
+    try:
+        idx = ordered_pks.index(int(row.game_pk))
+    except ValueError:
+        return {"status_text": None}
+    game_num = idx + 1
+    is_first = idx == 0
+    is_last = idx == total_in_window - 1
+
+    up_to = window.iloc[: idx + 1]
+    # Only count wins from Final games (skip in-progress / postponed).
+    finals_up_to = up_to[up_to["status"] == "Final"]
+    home_wins = int((finals_up_to["winner_team_id"] == home_id).sum())
+    away_wins = int((finals_up_to["winner_team_id"] == away_id).sum())
+
+    # Humanize
+    home_name = row.home_team
+    away_name = row.away_team
+    total_label = total_in_window if not is_last else game_num
+    if total_in_window == 1:
+        text = "Single-game series"
+    elif is_first:
+        text = f"Game 1 of a {total_in_window}-game series"
+    elif home_wins == away_wins:
+        text = f"Series tied {home_wins}-{away_wins} after game {game_num} of {total_in_window}"
+    else:
+        leader = home_name if home_wins > away_wins else away_name
+        wins = max(home_wins, away_wins)
+        losses = min(home_wins, away_wins)
+        if is_last:
+            # Completed series — either a clinch or a split
+            if wins > losses:
+                text = f"{leader} wins the series {wins}-{losses}"
+            else:
+                text = f"Series ends tied {wins}-{losses}"
+        else:
+            text = f"{leader} leads the series {wins}-{losses} after game {game_num} of {total_in_window}"
+
+    return {
+        "game_number_in_series": int(game_num),
+        "games_in_series_so_far": int(total_in_window),
+        "home_series_wins": home_wins,
+        "away_series_wins": away_wins,
+        "is_first_game": bool(is_first),
+        "is_last_game": bool(is_last),
+        "status_text": text,
+    }
 
 
 def build_interest_input(row) -> dict:
@@ -107,9 +227,11 @@ scored: list[dict] = []
 for _, row in games_df.iterrows():
     interest_input = build_interest_input(row)
     scoring = score_game_interest(interest_input)
+    series = compute_series_context(row, season_games_df)
     scored.append({**interest_input, **scoring, "game_pk": int(row.game_pk),
                    "game_date": row.game_date, "venue": row.venue,
                    "home_abbrev": row.home_abbrev, "away_abbrev": row.away_abbrev,
+                   "series": series,
                    "upset_flag": bool(row.upset_flag) if row.upset_flag is not None else False})
 print(f"interest-scored: {len(scored)} games")
 # quick breakdown
@@ -178,6 +300,7 @@ for g in scored:
         "narrative_spine": g["narrative_spine"],
         "interest_score": g["interest_score"],
         "recap_length": g["recap_length"],
+        "series_context": g["series"],
     }
 
     try:

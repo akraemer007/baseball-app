@@ -336,7 +336,7 @@ export async function getTeamFromWarehouse(
          JOIN silver_team a ON a.team_id = g.away_team_id
          LEFT JOIN gold_game_elo e USING (game_pk)
         WHERE g.season = ${season}
-          AND g.status IN ('Preview', 'Scheduled')
+          AND g.status != 'Final'
           AND (g.home_team_id = ${teamId} OR g.away_team_id = ${teamId})
         ORDER BY g.game_date ASC
         LIMIT 5`
