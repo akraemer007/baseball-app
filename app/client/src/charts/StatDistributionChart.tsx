@@ -1,4 +1,10 @@
-import { useMemo, useRef, useEffect, useState } from 'react';
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useEffect,
+  useState,
+} from 'react';
 import * as d3 from 'd3';
 import type { StatDistributionEntry } from '@shared/types';
 
@@ -255,6 +261,12 @@ export function StatDistributionSpark({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(400);
 
+  // Belt-and-suspenders measurement. ResizeObserver handles the common
+  // case, but it can miss fires when a parent grid cell changes column
+  // span (e.g. a sibling row expanding to span 2 cols and then
+  // collapsing). useLayoutEffect with no deps runs after every render
+  // and catches any drift before paint so the SVG never renders wider
+  // than its container.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -264,6 +276,13 @@ export function StatDistributionSpark({
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measured = Math.max(120, el.clientWidth);
+    if (measured !== width) setWidth(measured);
+  });
 
   const featureKind = useMemo(() => {
     const cur = currentTeamAbbrev?.toUpperCase() ?? '';
@@ -300,8 +319,16 @@ export function StatDistributionSpark({
   const midY = innerH / 2;
 
   return (
-    <div ref={wrapRef} style={{ width: '100%', height, position: 'relative' }}>
-      <svg width={width} height={height}>
+    <div
+      ref={wrapRef}
+      style={{
+        width: '100%',
+        height,
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <svg width={width} height={height} style={{ display: 'block' }}>
         <g transform={`translate(${padX}, ${padTop})`}>
           {/* Distribution baseline — a soft line everyone sits on so the
               strip reads as a single value axis, not a point cloud. */}
