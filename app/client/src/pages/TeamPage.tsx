@@ -265,7 +265,16 @@ export default function TeamPage() {
                 const wonByTeam = g.winnerTeamId === team.id;
                 return (
                   <tr key={g.gameId}>
-                    <td className="mono">{g.date.slice(5)}</td>
+                    <td className="mono">
+                      <a
+                        className="team-matchup-link"
+                        href={`https://baseballsavant.mlb.com/gamefeed?gamePk=${g.gameId}&hf=boxScore`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {g.date.slice(5)}
+                      </a>
+                    </td>
                     <td>
                       <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
                       <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
@@ -302,7 +311,16 @@ export default function TeamPage() {
             <tbody>
               {upcomingGames.map((g) => (
                 <tr key={g.gameId}>
-                  <td className="mono">{g.date.slice(5)}</td>
+                  <td className="mono">
+                    <a
+                      className="team-matchup-link"
+                      href={`https://baseballsavant.mlb.com/preview?game_pk=${g.gameId}&game_date=${g.date}&date=${g.date}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {g.date.slice(5)}
+                    </a>
+                  </td>
                   <td>
                     <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
                     <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
