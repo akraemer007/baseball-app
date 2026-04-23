@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { apiGet } from '../lib/api';
+import { usePreferences } from '../lib/preferences';
 import type { LeagueResponse, StatDistributionResponse, TeamResponse } from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
 import { StatDistributionChart } from '../charts/StatDistributionChart';
@@ -66,6 +67,7 @@ export default function TeamPage() {
   const navigate = useNavigate();
   const season = new Date().getUTCFullYear();
   const [expandedStat, setExpandedStat] = useState<string | null>(null);
+  const { primaryTeam, secondaryTeam } = usePreferences();
 
   const teamQ = useQuery<TeamResponse>({
     queryKey: ['team', teamId, season],
@@ -232,6 +234,8 @@ export default function TeamPage() {
                           statKey={s.statKey}
                           season={season}
                           currentTeamAbbrev={team.id}
+                          primaryTeamAbbrev={primaryTeam}
+                          secondaryTeamAbbrev={secondaryTeam}
                         />
                       </div>
                     )}
@@ -316,10 +320,14 @@ function StatDistRow({
   statKey,
   season,
   currentTeamAbbrev,
+  primaryTeamAbbrev,
+  secondaryTeamAbbrev,
 }: {
   statKey: string;
   season: number;
   currentTeamAbbrev: string;
+  primaryTeamAbbrev: string;
+  secondaryTeamAbbrev: string;
 }) {
   const { data, isLoading, error } = useQuery<StatDistributionResponse>({
     queryKey: ['stat-dist', statKey, season],
@@ -336,6 +344,8 @@ function StatDistRow({
       lowerIsBetter={data.lowerIsBetter}
       leagueMean={data.leagueMean}
       currentTeamAbbrev={currentTeamAbbrev}
+      primaryTeamAbbrev={primaryTeamAbbrev}
+      secondaryTeamAbbrev={secondaryTeamAbbrev}
       height={160}
     />
   );
