@@ -275,6 +275,54 @@ interface RecentGameRow {
   winner_team_id: number | null;
 }
 
+interface TopPerformerRow {
+  game_pk: number;
+  kind: 'batter' | 'pitcher';
+  player_name: string;
+  // Batter fields (null for pitcher rows)
+  at_bats: number | null;
+  hits: number | null;
+  home_runs: number | null;
+  rbi: number | null;
+  // Pitcher fields (null for batter rows)
+  innings_pitched: number | null;
+  earned_runs: number | null;
+  strikeouts: number | null;
+  wins: number | null;
+}
+
+/** Silver stores IP as true decimal innings (1/3 = 0.333…). Baseball
+ *  convention is "X.Y" where Y ∈ {0,1,2} counts outs past the last
+ *  completed inning, so 6.667 → "6.2" and 7.0 → "7". */
+function formatIP(ip: number): string {
+  const outs = Math.round(ip * 3);
+  const whole = Math.floor(outs / 3);
+  const rem = outs % 3;
+  return rem === 0 ? `${whole}` : `${whole}.${rem}`;
+}
+
+/** Build a short newspaper-box-score style line for the row's performer. */
+function formatTopPerformer(row: TopPerformerRow): string {
+  // Just the last name for terseness — "Suzuki" beats "S. Suzuki" in a table cell.
+  const parts = row.player_name.trim().split(/\s+/);
+  const last = parts.length > 1 ? parts.slice(1).join(' ') : parts[0];
+  if (row.kind === 'batter') {
+    const bits: string[] = [`${row.hits ?? 0}-${row.at_bats ?? 0}`];
+    if ((row.home_runs ?? 0) > 0) {
+      bits.push(row.home_runs === 1 ? 'HR' : `${row.home_runs} HR`);
+    }
+    if ((row.rbi ?? 0) > 0) bits.push(`${row.rbi} RBI`);
+    return `${last} ${bits.join(', ')}`;
+  }
+  // pitcher
+  const bits = [
+    `${formatIP(row.innings_pitched ?? 0)} IP`,
+    `${row.strikeouts ?? 0} K`,
+    `${row.earned_runs ?? 0} ER`,
+  ];
+  return `${last} ${bits.join(', ')}`;
+}
+
 interface UpcomingGameRow {
   game_pk: number;
   game_date: string;
@@ -284,6 +332,8 @@ interface UpcomingGameRow {
   away_abbrev: string;
   home_probable_pitcher_id: number | null;
   away_probable_pitcher_id: number | null;
+  home_probable_pitcher_name: string | null;
+  away_probable_pitcher_name: string | null;
   home_win_prob: number | null;
 }
 
@@ -307,7 +357,7 @@ export async function getTeamFromWarehouse(
   }
   const teamId = summary.team_id;
 
-  const [percentiles, recent, upcoming, leaderRow, runDiffRow] = await Promise.all([
+  const [percentiles, recent, upcoming, leaderRow, runDiffRow, topPerformers] = await Promise.all([
     query<TeamPercentileRow>(
       `SELECT stat_name, team_value, league_mean, league_stddev, z_score, rank_in_league
          FROM gold_team_stat_vs_league
@@ -330,11 +380,17 @@ export async function getTeamFromWarehouse(
       `SELECT g.game_pk, g.game_date, g.home_team_id, h.abbrev AS home_abbrev,
               g.away_team_id, a.abbrev AS away_abbrev,
               g.home_probable_pitcher_id, g.away_probable_pitcher_id,
+              hp.player_name AS home_probable_pitcher_name,
+              ap.player_name AS away_probable_pitcher_name,
               e.home_win_prob
          FROM silver_game g
          JOIN silver_team h ON h.team_id = g.home_team_id
          JOIN silver_team a ON a.team_id = g.away_team_id
          LEFT JOIN gold_game_elo e USING (game_pk)
+         LEFT JOIN silver_player_season hp
+           ON hp.player_id = g.home_probable_pitcher_id AND hp.season = ${season}
+         LEFT JOIN silver_player_season ap
+           ON ap.player_id = g.away_probable_pitcher_id AND ap.season = ${season}
         WHERE g.season = ${season}
           AND g.status != 'Final'
           AND (g.home_team_id = ${teamId} OR g.away_team_id = ${teamId})
@@ -374,6 +430,60 @@ export async function getTeamFromWarehouse(
           AND g.status = 'Final'
           AND g.game_type = 'R'
           AND tg.team_id = ${teamId}`
+    ),
+    // Top performer per recent game: best batter by hits/HR/RBI/walks/runs, or
+    // the starting pitcher if they had a "gem" (>=6 IP, <=2 ER). One row per
+    // game; NULL if we didn't find either.
+    query<TopPerformerRow>(
+      `WITH recent AS (
+         SELECT g.game_pk
+           FROM silver_game g
+          WHERE g.season = ${season}
+            AND g.status = 'Final'
+            AND (g.home_team_id = ${teamId} OR g.away_team_id = ${teamId})
+          ORDER BY g.game_date DESC
+          LIMIT 10
+       ),
+       batters AS (
+         SELECT b.game_pk, b.player_name,
+                b.at_bats, b.hits, b.home_runs, b.rbi,
+                (b.hits + b.home_runs * 3.0 + b.rbi * 1.5
+                 + b.walks * 0.5 + b.runs * 0.5) AS score
+           FROM silver_player_game_batting b
+           JOIN recent r USING (game_pk)
+          WHERE b.team_id = ${teamId}
+       ),
+       best_batter AS (
+         SELECT game_pk, player_name, at_bats, hits, home_runs, rbi, score,
+                ROW_NUMBER() OVER (PARTITION BY game_pk ORDER BY score DESC) AS rn
+           FROM batters
+       ),
+       pitchers AS (
+         SELECT p.game_pk, p.player_name,
+                p.innings_pitched, p.earned_runs, p.strikeouts, p.wins
+           FROM silver_player_game_pitching p
+           JOIN recent r USING (game_pk)
+          WHERE p.team_id = ${teamId}
+            AND p.innings_pitched >= 6
+            AND p.earned_runs <= 2
+       ),
+       best_pitcher AS (
+         SELECT *, ROW_NUMBER() OVER (
+                     PARTITION BY game_pk
+                     ORDER BY innings_pitched DESC, strikeouts DESC
+                   ) AS rn
+           FROM pitchers
+       )
+       SELECT
+         COALESCE(bp.game_pk, bb.game_pk) AS game_pk,
+         CASE WHEN bp.game_pk IS NOT NULL THEN 'pitcher' ELSE 'batter' END AS kind,
+         COALESCE(bp.player_name, bb.player_name) AS player_name,
+         bb.at_bats, bb.hits, bb.home_runs, bb.rbi,
+         bp.innings_pitched, bp.earned_runs, bp.strikeouts, bp.wins
+       FROM best_batter bb
+       FULL OUTER JOIN (SELECT * FROM best_pitcher WHERE rn = 1) bp
+         ON bp.game_pk = bb.game_pk
+       WHERE COALESCE(bb.rn, 1) = 1`
     ),
   ]);
 
@@ -431,32 +541,38 @@ export async function getTeamFromWarehouse(
       category: STAT_CATEGORIES[p.stat_name] ?? 'batting',
       leagueMean: formatStatValue(p.stat_name, p.league_mean),
     })),
-    recentGames: recent.map((g) => ({
-      gameId: String(g.game_pk),
-      date: g.game_date,
-      homeTeamId: g.home_abbrev,
-      awayTeamId: g.away_abbrev,
-      homeScore: g.home_score,
-      awayScore: g.away_score,
-      isFinal: true,
-      winnerTeamId:
-        g.winner_team_id === null
-          ? null
-          : g.winner_team_id === g.home_team_id
-            ? g.home_abbrev
-            : g.away_abbrev,
-    })),
+    recentGames: recent.map((g) => {
+      const perf = topPerformers.find((p) => p.game_pk === g.game_pk);
+      return {
+        gameId: String(g.game_pk),
+        date: g.game_date,
+        homeTeamId: g.home_abbrev,
+        awayTeamId: g.away_abbrev,
+        homeScore: g.home_score,
+        awayScore: g.away_score,
+        isFinal: true,
+        winnerTeamId:
+          g.winner_team_id === null
+            ? null
+            : g.winner_team_id === g.home_team_id
+              ? g.home_abbrev
+              : g.away_abbrev,
+        topPerformer: perf ? formatTopPerformer(perf) : undefined,
+      };
+    }),
     upcomingGames: upcoming.map((g) => ({
       gameId: String(g.game_pk),
       date: g.game_date,
       homeTeamId: g.home_abbrev,
       awayTeamId: g.away_abbrev,
-      probableHomePitcherId: g.home_probable_pitcher_id
-        ? String(g.home_probable_pitcher_id)
-        : null,
-      probableAwayPitcherId: g.away_probable_pitcher_id
-        ? String(g.away_probable_pitcher_id)
-        : null,
+      // Prefer the joined name, fall back to the id so "TBD" stays empty
+      // but the UI still has something actionable.
+      probableHomePitcherId:
+        g.home_probable_pitcher_name ??
+        (g.home_probable_pitcher_id ? String(g.home_probable_pitcher_id) : null),
+      probableAwayPitcherId:
+        g.away_probable_pitcher_name ??
+        (g.away_probable_pitcher_id ? String(g.away_probable_pitcher_id) : null),
       impliedHomeWinProb: g.home_win_prob ?? 0.5,
     })),
   };

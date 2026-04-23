@@ -239,6 +239,9 @@ export default function LeaguePage() {
                         >
                           <span className="standings-rank">{t.rank}.</span>{' '}
                           <span style={{ color: t.color }}>{t.name}</span>{' '}
+                          <span className="muted mono standings-record">
+                            {t.wins}-{t.losses}
+                          </span>{' '}
                           <span className="muted mono standings-gb">
                             [{formatGB(t.gamesBehind, t.rank === 1)}]
                           </span>

@@ -67,6 +67,9 @@ export interface GameSummary {
   awayScore: number | null;
   isFinal: boolean;
   winnerTeamId: string | null;
+  /** Our team's top performer that game: short line like
+   *  "Suzuki 3-4, HR, 3 RBI" or "Assad 7 IP, 10 K, 1 ER". */
+  topPerformer?: string;
 }
 
 export interface ScheduledGame {

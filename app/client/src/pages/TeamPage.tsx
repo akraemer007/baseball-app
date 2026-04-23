@@ -255,9 +255,11 @@ export default function TeamPage() {
           <table className="stat-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Matchup</th>
-                <th>Score</th>
+                <th className="col-shrink">Date</th>
+                <th className="matchup-col">Matchup</th>
+                <th className="col-shrink"></th>
+                <th className="col-shrink">Score</th>
+                <th>Top performer</th>
               </tr>
             </thead>
             <tbody>
@@ -265,7 +267,7 @@ export default function TeamPage() {
                 const wonByTeam = g.winnerTeamId === team.id;
                 return (
                   <tr key={g.gameId}>
-                    <td className="mono">
+                    <td className="mono col-shrink">
                       <a
                         className="team-matchup-link"
                         href={`https://baseballsavant.mlb.com/gamefeed?gamePk=${g.gameId}&hf=boxScore`}
@@ -275,21 +277,26 @@ export default function TeamPage() {
                         {g.date.slice(5)}
                       </a>
                     </td>
-                    <td>
+                    <td className="matchup-col">
                       <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
                       <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
                     </td>
-                    <td className="num">
+                    <td className="col-shrink">
                       <span
-                        className="pill"
+                        className="pill score-wl"
                         style={{
                           background: wonByTeam ? team.color : 'var(--border)',
                           color: wonByTeam ? '#fff' : 'var(--text-dim)',
                         }}
                       >
                         {wonByTeam ? 'W' : 'L'}
-                      </span>{' '}
+                      </span>
+                    </td>
+                    <td className="col-shrink mono score-num">
                       {g.awayScore}-{g.homeScore}
+                    </td>
+                    <td className="top-performer muted">
+                      {g.topPerformer ?? ''}
                     </td>
                   </tr>
                 );
@@ -303,31 +310,49 @@ export default function TeamPage() {
           <table className="stat-table">
             <thead>
               <tr>
-                <th>Date</th>
+                <th className="col-shrink">Date</th>
                 <th>Matchup</th>
-                <th>Home WP</th>
+                <th className="col-shrink">Favorite</th>
               </tr>
             </thead>
             <tbody>
-              {upcomingGames.map((g) => (
-                <tr key={g.gameId}>
-                  <td className="mono">
-                    <a
-                      className="team-matchup-link"
-                      href={`https://baseballsavant.mlb.com/preview?game_pk=${g.gameId}&game_date=${g.date}&date=${g.date}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {g.date.slice(5)}
-                    </a>
-                  </td>
-                  <td>
-                    <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
-                    <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
-                  </td>
-                  <td className="num">{(g.impliedHomeWinProb * 100).toFixed(0)}%</td>
-                </tr>
-              ))}
+              {upcomingGames.map((g) => {
+                const homeFav = g.impliedHomeWinProb >= 0.5;
+                const favAbbrev = homeFav ? g.homeTeamId : g.awayTeamId;
+                const favPct = Math.round(
+                  (homeFav ? g.impliedHomeWinProb : 1 - g.impliedHomeWinProb) * 100,
+                );
+                return (
+                  <tr key={g.gameId}>
+                    <td className="mono col-shrink">
+                      <a
+                        className="team-matchup-link"
+                        href={`https://baseballsavant.mlb.com/preview?game_pk=${g.gameId}&game_date=${g.date}&date=${g.date}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {g.date.slice(5)}
+                      </a>
+                    </td>
+                    <td>
+                      <div>
+                        <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
+                        <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
+                      </div>
+                      {(g.probableAwayPitcherId || g.probableHomePitcherId) && (
+                        <div className="muted" style={{ fontSize: '0.75rem', marginTop: '0.1rem' }}>
+                          {g.probableAwayPitcherId ?? 'TBD'} vs {g.probableHomePitcherId ?? 'TBD'}
+                        </div>
+                      )}
+                    </td>
+                    <td className="col-shrink">
+                      <span className="mono">
+                        {favAbbrev} {favPct}%
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

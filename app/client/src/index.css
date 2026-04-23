@@ -202,6 +202,35 @@ table.stat-table td.num {
   text-align: right;
 }
 
+/* Fixed-ish columns collapse to their content width so the flexible
+   matchup column absorbs the extra space. */
+table.stat-table th.col-shrink,
+table.stat-table td.col-shrink {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* Matchup column: sized to content + a little slack so "CHC @ PHI"
+   stays on one line without triggering a wrap. */
+table.stat-table th.matchup-col,
+table.stat-table td.matchup-col {
+  white-space: nowrap;
+  padding-right: 1rem;
+}
+
+/* Last-10 W/L + Score are their own columns so both pill and score
+   sit at the same x across rows; tabular-nums keeps double-digit
+   scores from shifting. */
+.score-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Top-performer cell: smaller font, absorbs the leftover row width. */
+table.stat-table td.top-performer {
+  font-size: 0.8rem;
+}
+
 /* Division trajectory — featured (large) chart on top */
 .division-featured {
   padding: 1rem 1.25rem 0.5rem;
@@ -312,6 +341,7 @@ table.stat-table td.num {
 }
 
 .standings-team:hover .standings-rank,
+.standings-team:hover .standings-record,
 .standings-team:hover .standings-gb {
   color: var(--accent);
 }
@@ -320,6 +350,10 @@ table.stat-table td.num {
   color: var(--text-dim);
   font-family: var(--mono);
   font-size: 0.78rem;
+}
+
+.standings-record {
+  font-size: 0.75rem;
 }
 
 .standings-gb {
