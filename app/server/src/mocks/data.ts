@@ -131,9 +131,27 @@ export function getTeam(teamId: string, season: number): TeamResponse {
     Object.values(TEAMS).find((t) => t.id.toUpperCase() === teamId.toUpperCase()) ||
     TEAMS.CHC;
   const rand = mulberry32(hashSeed(team.id, season));
-  const wins = 70 + Math.floor(rand() * 25);
-  const losses = 162 - wins - Math.floor(rand() * 3);
-  const runDiff = Math.floor((rand() - 0.45) * 200);
+
+  // Figure out how many games should have been played as of today, so the
+  // mocked record/streak/recent-games reflect a live mid-season view rather
+  // than a full 162-game season every time.
+  const openingDay = new Date(`${season}-03-26T00:00:00Z`);
+  const now = new Date();
+  const daysInSeason = (now.getTime() - openingDay.getTime()) / (1000 * 60 * 60 * 24);
+  const gamesPlayed =
+    now.getUTCFullYear() > season
+      ? 162
+      : Math.max(0, Math.min(162, Math.floor(daysInSeason * 0.87)));
+
+  // Team "true talent" skill, consistent with buildTrajectory.
+  const skillRand = mulberry32(hashSeed(team.id, season, 'skill'));
+  const baselineSkill = 0.40 + skillRand() * 0.20;
+  const wins = Math.min(
+    gamesPlayed,
+    Math.round(gamesPlayed * baselineSkill + (rand() - 0.5) * 2)
+  );
+  const losses = gamesPlayed - wins;
+  const runDiff = Math.round(((wins - losses) / Math.max(1, gamesPlayed)) * 80 + (rand() - 0.5) * 30);
 
   const percentileStats = (
     [
@@ -156,14 +174,15 @@ export function getTeam(teamId: string, season: number): TeamResponse {
     category,
   }));
 
-  const recentGames = Array.from({ length: 10 }).map((_, i) => {
+  const todayIso = now.toISOString().slice(0, 10);
+  const recentGames = Array.from({ length: Math.min(10, gamesPlayed) }).map((_, i) => {
     const isHome = rand() > 0.5;
     const opp = Object.values(TEAMS)[Math.floor(rand() * 30)];
     const homeScore = Math.floor(rand() * 10);
     const awayScore = Math.floor(rand() * 10);
     return {
       gameId: `${team.id}-recent-${i}`,
-      date: addDays(`${season}-09-15`, -i),
+      date: addDays(todayIso, -i - 1),
       homeTeamId: isHome ? team.id : opp.id,
       awayTeamId: isHome ? opp.id : team.id,
       homeScore,
@@ -187,7 +206,7 @@ export function getTeam(teamId: string, season: number): TeamResponse {
     const opp = Object.values(TEAMS)[Math.floor(rand() * 30)];
     return {
       gameId: `${team.id}-upcoming-${i}`,
-      date: addDays(`${season}-09-16`, i),
+      date: addDays(todayIso, i),
       homeTeamId: isHome ? team.id : opp.id,
       awayTeamId: isHome ? opp.id : team.id,
       probableHomePitcherId: `p-${isHome ? team.id : opp.id}-sp${(i % 5) + 1}`,
