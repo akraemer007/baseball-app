@@ -237,6 +237,48 @@ table.stat-table td.num {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
+/* Team page header: team name + team picker side-by-side */
+.team-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.1rem;
+}
+
+.team-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.35rem 2rem 0.35rem 0.65rem;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+                    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 8px) 50%;
+  background-size: 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.team-select:hover {
+  border-color: rgba(245, 208, 111, 0.55);
+}
+
+.team-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.team-select option {
+  background: var(--bg-elev);
+  color: var(--text);
+}
+
 .division-header {
   display: flex;
   justify-content: space-between;

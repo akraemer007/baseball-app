@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { apiGet } from '../lib/api';
@@ -7,6 +7,7 @@ import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
 
 export default function TeamPage() {
   const { teamId = 'CHC' } = useParams();
+  const navigate = useNavigate();
   const season = new Date().getUTCFullYear();
 
   const teamQ = useQuery<TeamResponse>({
@@ -46,8 +47,28 @@ export default function TeamPage() {
 
   return (
     <div className="page">
-      <h1 style={{ color: team.color, marginBottom: '0.25rem' }}>{team.name}</h1>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <div className="team-header-row">
+        <h1 style={{ color: team.color, margin: 0 }}>{team.name}</h1>
+        {leagueQ.data && (
+          <select
+            className="team-select"
+            value={team.id}
+            onChange={(e) => navigate(`/team/${e.target.value}`)}
+            aria-label="Switch team"
+          >
+            {leagueQ.data.divisions.map((div) => (
+              <optgroup key={div.id} label={div.name}>
+                {div.teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        )}
+      </div>
+      <p className="muted" style={{ marginTop: '0.25rem' }}>
         <span className="mono" style={{ fontSize: '1.1rem', color: 'var(--text)' }}>
           {record.wins}-{record.losses}
         </span>{' '}

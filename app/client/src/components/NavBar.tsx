@@ -8,7 +8,7 @@ export default function NavBar() {
         League
       </NavLink>
       <NavLink to="/team/CHC" className={({ isActive }) => (isActive ? 'active' : '')}>
-        Cubs
+        Team
       </NavLink>
       <NavLink to="/news" className={({ isActive }) => (isActive ? 'active' : '')}>
         News
