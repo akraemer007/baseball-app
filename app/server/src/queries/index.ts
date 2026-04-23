@@ -17,6 +17,30 @@ import { query } from '../lib/warehouse.js';
 
 // ---- helpers ---------------------------------------------------------------
 
+/** Pretty label per stat_name emitted by gold_team_stat_vs_league. */
+const STAT_LABELS: Record<string, string> = {
+  runs_per_game: 'R/G',
+  hr_per_game: 'HR/G',
+  avg: 'AVG',
+  obp: 'OBP',
+  slg: 'SLG',
+  ops: 'OPS',
+  ops_plus: 'OPS+',
+  era: 'ERA',
+  era_minus: 'ERA-',
+  fip: 'FIP',
+  k_per_9: 'K/9',
+  errors_per_game: 'E/G',
+};
+
+/** Per-stat value formatting — keeps 3 decimals for slash-line stats, 2 for others. */
+function formatStatValue(stat: string, raw: number | null | undefined): number {
+  if (raw == null) return 0;
+  const threeDec = new Set(['avg', 'obp', 'slg', 'ops']);
+  return Number(raw.toFixed(threeDec.has(stat) ? 3 : 2));
+}
+
+
 interface DivisionTrajectoryRow {
   season: number;
   division: string;
@@ -199,7 +223,7 @@ export async function getTeamFromWarehouse(
   }
   const teamId = summary.team_id;
 
-  const [percentiles, recent, upcoming] = await Promise.all([
+  const [percentiles, recent, upcoming, leaderRow] = await Promise.all([
     query<TeamPercentileRow>(
       `SELECT stat_name, team_value, league_mean, league_stddev, z_score, rank_in_league
          FROM gold_team_stat_vs_league
@@ -233,6 +257,27 @@ export async function getTeamFromWarehouse(
         ORDER BY g.game_date ASC
         LIMIT 5`
     ),
+    // Division leader's latest (cum_wins, cum_losses) — for games-behind.
+    query<{ cum_wins: number; cum_losses: number }>(
+      `WITH tgt AS (
+         SELECT division FROM gold_division_trajectory
+         WHERE season = ${season} AND team_id = ${teamId}
+         LIMIT 1
+       ),
+       latest AS (
+         SELECT team_id, MAX(as_of_date) AS max_date
+         FROM gold_division_trajectory
+         WHERE season = ${season}
+           AND division = (SELECT division FROM tgt)
+         GROUP BY team_id
+       )
+       SELECT gt.cum_wins, gt.cum_losses
+       FROM gold_division_trajectory gt
+       JOIN latest l ON l.team_id = gt.team_id AND l.max_date = gt.as_of_date
+       WHERE gt.season = ${season} AND gt.division = (SELECT division FROM tgt)
+       ORDER BY (gt.cum_wins - gt.cum_losses) DESC
+       LIMIT 1`
+    ),
   ]);
 
   // Compute streak from the most-recent games
@@ -254,6 +299,13 @@ export async function getTeamFromWarehouse(
   }
 
   const winPct = summary.cum_wins / Math.max(1, summary.cum_wins + summary.cum_losses);
+  const leader = leaderRow[0];
+  const gamesBehind = leader
+    ? Math.max(
+        0,
+        ((leader.cum_wins - summary.cum_wins) + (summary.cum_losses - leader.cum_losses)) / 2,
+      )
+    : 0;
 
   return {
     season,
@@ -268,15 +320,16 @@ export async function getTeamFromWarehouse(
       losses: summary.cum_losses,
       winPct: Number(winPct.toFixed(3)),
       runDiff: 0, // TODO: wire in from gold_team_stat_vs_league runs totals
+      gamesBehind,
     },
     streak: { type: streakType, length: streakLength },
     percentileStats: percentiles.map((p) => ({
       statKey: p.stat_name,
-      label: p.stat_name,
-      value: Number((p.team_value ?? 0).toFixed(3)),
+      label: STAT_LABELS[p.stat_name] ?? p.stat_name,
+      value: formatStatValue(p.stat_name, p.team_value),
       // Lower rank = better. Convert rank 1-of-30 → 97th percentile.
       leagueRankPercentile: Math.round(((30 - p.rank_in_league + 1) / 30) * 100),
-      category: /era|k_per_9|fip|errors/.test(p.stat_name) ? 'pitching' : 'batting',
+      category: /era|fip|k_per_9|errors/.test(p.stat_name) ? 'pitching' : 'batting',
     })),
     recentGames: recent.map((g) => ({
       gameId: String(g.game_pk),

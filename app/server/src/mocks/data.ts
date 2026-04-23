@@ -126,14 +126,33 @@ export function getLeague(season: number): LeagueResponse {
   return { season, divisions: DIVISIONS, trajectory };
 }
 
+/** Deterministic (wins, losses) for a given team+season in the mock world. */
+function mockRecord(teamId: string, season: number): { wins: number; losses: number } {
+  const r = mulberry32(hashSeed(teamId, season));
+  const wins = 70 + Math.floor(r() * 25);
+  const losses = 162 - wins - Math.floor(r() * 3);
+  return { wins, losses };
+}
+
 export function getTeam(teamId: string, season: number): TeamResponse {
   const team =
     Object.values(TEAMS).find((t) => t.id.toUpperCase() === teamId.toUpperCase()) ||
     TEAMS.CHC;
   const rand = mulberry32(hashSeed(team.id, season));
-  const wins = 70 + Math.floor(rand() * 25);
-  const losses = 162 - wins - Math.floor(rand() * 3);
+  const { wins, losses } = mockRecord(team.id, season);
   const runDiff = Math.floor((rand() - 0.45) * 200);
+
+  // Division leader → games behind
+  const division = DIVISIONS.find((d) => d.teams.some((t) => t.id === team.id));
+  let gamesBehind = 0;
+  if (division) {
+    const records = division.teams.map((t) => ({ t, ...mockRecord(t.id, season) }));
+    const leader = records.reduce((best, r) =>
+      r.wins - r.losses > best.wins - best.losses ? r : best,
+    );
+    gamesBehind = ((leader.wins - wins) + (losses - leader.losses)) / 2;
+    if (gamesBehind < 0) gamesBehind = 0;
+  }
 
   const percentileStats = (
     [
@@ -204,6 +223,7 @@ export function getTeam(teamId: string, season: number): TeamResponse {
       losses,
       winPct: Number((wins / (wins + losses)).toFixed(3)),
       runDiff,
+      gamesBehind,
     },
     streak: { type: rand() > 0.5 ? 'W' : 'L', length: 1 + Math.floor(rand() * 5) },
     percentileStats,

@@ -72,7 +72,9 @@ export default function TeamPage() {
         <span className="mono" style={{ fontSize: '1.1rem', color: 'var(--text)' }}>
           {record.wins}-{record.losses}
         </span>{' '}
-        ({record.winPct.toFixed(3)}) · Run diff{' '}
+        ({record.winPct.toFixed(3)}) · GB{' '}
+        <span className="mono">{formatGB(record.gamesBehind)}</span>
+        {' '}· Run diff{' '}
         <span className="mono">
           {record.runDiff >= 0 ? '+' : ''}
           {record.runDiff}
@@ -197,6 +199,14 @@ export default function TeamPage() {
       </div>
     </div>
   );
+}
+
+function formatGB(gb: number): string {
+  if (gb === 0) return '—'; // leader
+  if (gb < 1) return '½';
+  const whole = Math.floor(gb);
+  const half = gb - whole >= 0.5 ? '½' : '';
+  return `${whole}${half}`;
 }
 
 function TeamLink({ abbrev, currentId }: { abbrev: string; currentId: string }) {

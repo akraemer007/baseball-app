@@ -39,6 +39,8 @@ export interface TeamRecord {
   losses: number;
   winPct: number;
   runDiff: number;
+  /** Games behind the division leader (0 if this team IS the leader, else positive half-steps). */
+  gamesBehind: number;
 }
 
 export interface TeamStreak {
