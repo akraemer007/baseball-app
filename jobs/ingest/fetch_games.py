@@ -51,17 +51,22 @@ for d in dates_to_fetch:
         "payload": json.dumps(sched.payload),
     })
 
-    # Iterate completed games and grab boxscores
+    # Iterate completed games and grab boxscores — dedupe by game_pk so a
+    # rescheduled game that shows up under multiple dates isn't fetched twice.
+    seen_pks_today: set[int] = {int(r["game_pk"]) for r in boxscore_rows}
     for date_entry in sched.payload.get("dates", []):
         for game in date_entry.get("games", []):
             status = game.get("status", {}).get("abstractGameState", "")
             if status != "Final":
                 continue
-            game_pk = game["gamePk"]
+            game_pk = int(game["gamePk"])
+            if game_pk in seen_pks_today:
+                continue
+            seen_pks_today.add(game_pk)
             try:
                 box = client.boxscore(game_pk)
                 boxscore_rows.append({
-                    "game_pk": int(game_pk),
+                    "game_pk": game_pk,
                     "game_date": d.isoformat(),
                     "payload": json.dumps(box.payload),
                 })

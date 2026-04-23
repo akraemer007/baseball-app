@@ -105,13 +105,22 @@ for season in seasons:
         WHEN NOT MATCHED THEN INSERT *
     """)
 
-    # Collect every Final game_pk for this season
+    # Collect every Final game_pk for this season. Rescheduled games can show
+    # up under two dates (original + new) in the schedule payload, so dedupe
+    # by pk here — keep the first occurrence so a game is associated with its
+    # originally scheduled date.
+    seen_pks: set[int] = set()
     game_pks: list[tuple[int, str]] = []
     for date_entry in sched.payload.get("dates", []):
         d = date_entry["date"]
         for game in date_entry.get("games", []):
-            if game.get("status", {}).get("abstractGameState") == "Final":
-                game_pks.append((int(game["gamePk"]), d))
+            if game.get("status", {}).get("abstractGameState") != "Final":
+                continue
+            pk = int(game["gamePk"])
+            if pk in seen_pks:
+                continue
+            seen_pks.add(pk)
+            game_pks.append((pk, d))
     print(f"  {len(game_pks)} final games to fetch boxscores for")
 
     # Find already-ingested game_pks so we can skip
@@ -138,7 +147,10 @@ for season in seasons:
             continue
 
         if len(batch) >= BATCH_SIZE or i == len(to_fetch):
-            box_df = spark.createDataFrame(batch).selectExpr(
+            # Dedup the batch on game_pk before merging — if a rescheduled game
+            # showed up under two dates we'd otherwise stage it twice.
+            deduped = {row["game_pk"]: row for row in batch}
+            box_df = spark.createDataFrame(list(deduped.values())).selectExpr(
                 "game_pk", "game_date", "current_timestamp() as fetched_at_utc", "payload",
             )
             box_df.createOrReplaceTempView("box_stage")
