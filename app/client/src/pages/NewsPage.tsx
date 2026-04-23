@@ -3,6 +3,16 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
 import type { ProjectionsResponse, RecapsResponse } from '@shared/types';
 
+const NL_CENTRAL = new Set(['CHC', 'CIN', 'MIL', 'PIT', 'STL']);
+
+function isNLCentralGame(r: { homeTeamId: string; awayTeamId: string }): boolean {
+  return NL_CENTRAL.has(r.homeTeamId.toUpperCase()) || NL_CENTRAL.has(r.awayTeamId.toUpperCase());
+}
+
+function isCubsGame(r: { homeTeamId: string; awayTeamId: string }): boolean {
+  return r.homeTeamId.toUpperCase() === 'CHC' || r.awayTeamId.toUpperCase() === 'CHC';
+}
+
 function formatGameType(t: string): string {
   switch (t) {
     case 'walkoff': return 'WALK-OFF';
@@ -86,11 +96,28 @@ export default function NewsPage() {
         <p className="muted">No games on this date.</p>
       )}
       <div className="recap-list">
-        {recapsQ.data?.recaps.map((r) => (
-          <article key={r.gameId} className="recap-card">
+        {[...(recapsQ.data?.recaps ?? [])]
+          .sort((a, b) => {
+            // Cubs always first.
+            const aCubs = isCubsGame(a) ? 1 : 0;
+            const bCubs = isCubsGame(b) ? 1 : 0;
+            if (aCubs !== bCubs) return bCubs - aCubs;
+            // Then by interest score desc.
+            return (b.interestScore ?? 0) - (a.interestScore ?? 0);
+          })
+          .map((r) => {
+            const cubs = isCubsGame(r);
+            const nlc = isNLCentralGame(r);
+            return (
+          <article
+            key={r.gameId}
+            className={`recap-card${cubs ? ' recap-card-cubs' : nlc ? ' recap-card-nlc' : ''}`}
+          >
             <div className="recap-head">
               <h2 className="recap-headline">{r.headline}</h2>
               <div className="recap-tags">
+                {cubs && <span className="pill cubs-tag">CUBS</span>}
+                {!cubs && nlc && <span className="pill nlc-tag">NL CENTRAL</span>}
                 {r.gameType && r.gameType !== 'standard' && (
                   <span className={`pill game-type game-type-${r.gameType}`}>
                     {formatGameType(r.gameType)}
@@ -114,7 +141,8 @@ export default function NewsPage() {
               )}
             </div>
           </article>
-        ))}
+            );
+          })}
       </div>
     </div>
   );

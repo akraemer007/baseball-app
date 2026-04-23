@@ -784,3 +784,24 @@ table.stat-table td.num {
 .pill.game-type-comeback { background: #fff3d6; color: #8a5a00; }
 .pill.game-type-pitching_duel { background: #e0eaff; color: #1d3a8a; }
 .pill.game-type-blowout { background: #ebebeb; color: #4a4a4a; }
+
+/* Cubs / NL-Central recap cards */
+.recap-card-cubs {
+  border-left-color: var(--cubs-blue);
+  background: linear-gradient(to right, rgba(14, 51, 134, 0.05), var(--bg-elev) 40%);
+}
+.recap-card-nlc {
+  border-left-color: #0e3386;
+  border-left-width: 3px;
+}
+
+.pill.cubs-tag {
+  background: var(--cubs-blue);
+  color: #fff;
+  font-weight: 700;
+}
+.pill.nlc-tag {
+  background: #dce5f5;
+  color: #0e3386;
+  font-weight: 600;
+}
