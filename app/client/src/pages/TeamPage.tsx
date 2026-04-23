@@ -1,9 +1,10 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { apiGet } from '../lib/api';
-import type { LeagueResponse, TeamResponse } from '@shared/types';
+import type { LeagueResponse, StatDistributionResponse, TeamResponse } from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
+import { StatDistributionChart } from '../charts/StatDistributionChart';
 import { InfoTip } from '../components/InfoTip';
 
 const STAT_DEFINITIONS: Record<string, string> = {
@@ -26,6 +27,7 @@ export default function TeamPage() {
   const { teamId = 'CHC' } = useParams();
   const navigate = useNavigate();
   const season = new Date().getUTCFullYear();
+  const [expandedStat, setExpandedStat] = useState<string | null>(null);
 
   const teamQ = useQuery<TeamResponse>({
     queryKey: ['team', teamId, season],
@@ -132,14 +134,30 @@ export default function TeamPage() {
         <div className="card">
           <h3>Percentile vs. league</h3>
           <div className="percentile-list">
-            {percentileStats.map((s) => (
-              <div key={s.statKey} className="percentile-row">
+            {percentileStats.map((s) => {
+              const isOpen = expandedStat === s.statKey;
+              return (
+              <div
+                key={s.statKey}
+                className="percentile-row percentile-row-expandable"
+                data-open={isOpen}
+                role="button"
+                tabIndex={0}
+                onClick={() => setExpandedStat(isOpen ? null : s.statKey)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setExpandedStat(isOpen ? null : s.statKey);
+                  }
+                }}
+              >
                 <div className="percentile-label">
                   <span>
                     {s.label}
                     {STAT_DEFINITIONS[s.statKey] && (
                       <InfoTip>{STAT_DEFINITIONS[s.statKey]}</InfoTip>
                     )}
+                    <span className="percentile-row-chevron">▸</span>
                   </span>
                   <span className="muted mono">{s.value}</span>
                 </div>
@@ -161,8 +179,21 @@ export default function TeamPage() {
                 <div className="percentile-foot muted mono">
                   {s.leagueRankPercentile}th pctl · {s.category}
                 </div>
+                {isOpen && (
+                  <div
+                    className="stat-dist-container"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <StatDistRow
+                      statKey={s.statKey}
+                      season={season}
+                      currentTeamAbbrev={team.id}
+                    />
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -233,6 +264,35 @@ export default function TeamPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function StatDistRow({
+  statKey,
+  season,
+  currentTeamAbbrev,
+}: {
+  statKey: string;
+  season: number;
+  currentTeamAbbrev: string;
+}) {
+  const { data, isLoading, error } = useQuery<StatDistributionResponse>({
+    queryKey: ['stat-dist', statKey, season],
+    queryFn: () =>
+      apiGet<StatDistributionResponse>(
+        `/api/league/stat-distribution?stat=${encodeURIComponent(statKey)}&season=${season}`,
+      ),
+  });
+  if (isLoading) return <p className="muted" style={{ margin: 0 }}>Loading…</p>;
+  if (error || !data) return <p className="muted" style={{ margin: 0 }}>Failed to load distribution.</p>;
+  return (
+    <StatDistributionChart
+      entries={data.entries}
+      lowerIsBetter={data.lowerIsBetter}
+      leagueMean={data.leagueMean}
+      currentTeamAbbrev={currentTeamAbbrev}
+      height={160}
+    />
   );
 }
 

@@ -11,6 +11,7 @@ import type {
   PlayerResponse,
   ProjectionsResponse,
   RecapsResponse,
+  StatDistributionResponse,
   TeamResponse,
 } from '../../../shared/types.js';
 import { query } from '../lib/warehouse.js';
@@ -18,7 +19,7 @@ import { query } from '../lib/warehouse.js';
 // ---- helpers ---------------------------------------------------------------
 
 /** Pretty label per stat_name emitted by gold_team_stat_vs_league. */
-const STAT_LABELS: Record<string, string> = {
+export const STAT_LABELS: Record<string, string> = {
   runs_per_game: 'R/G',
   hr_per_game: 'HR/G',
   avg: 'AVG',
@@ -32,6 +33,9 @@ const STAT_LABELS: Record<string, string> = {
   k_per_9: 'K/9',
   errors_per_game: 'E/G',
 };
+
+/** Stats where a lower value is better. */
+const LOWER_IS_BETTER = new Set(['era', 'era_minus', 'fip', 'errors_per_game']);
 
 /** Per-stat value formatting — keeps 3 decimals for slash-line stats, 2 for others. */
 function formatStatValue(stat: string, raw: number | null | undefined): number {
@@ -153,6 +157,46 @@ export async function getHrRaceFromWarehouse(season: number): Promise<HrRaceResp
     leaders: Array.from(leaders.values()).sort(
       (a, b) => b.seasonHrTotal - a.seasonHrTotal
     ),
+  };
+}
+
+// ---- /api/league/stat-distribution -----------------------------------------
+
+interface StatDistributionRow {
+  team_abbrev: string;
+  team_name: string;
+  primary_color: string;
+  team_value: number;
+  league_mean: number;
+  rank_in_league: number;
+}
+
+export async function getStatDistributionFromWarehouse(
+  stat: string,
+  season: number
+): Promise<StatDistributionResponse> {
+  const safeStat = stat.replace(/[^a-z0-9_]/gi, '');
+  const rows = await query<StatDistributionRow>(
+    `SELECT g.team_abbrev, g.team_name, t.primary_color,
+            g.team_value, g.league_mean, g.rank_in_league
+       FROM gold_team_stat_vs_league g
+       JOIN silver_team t ON t.team_id = g.team_id
+      WHERE g.season = ${season} AND g.stat_name = '${safeStat}'
+      ORDER BY g.rank_in_league`
+  );
+  return {
+    season,
+    statName: safeStat,
+    statLabel: STAT_LABELS[safeStat] ?? safeStat,
+    lowerIsBetter: LOWER_IS_BETTER.has(safeStat),
+    leagueMean: rows[0]?.league_mean ?? 0,
+    entries: rows.map((r) => ({
+      teamAbbrev: r.team_abbrev,
+      teamName: r.team_name,
+      teamColor: r.primary_color,
+      value: formatStatValue(safeStat, r.team_value),
+      rank: r.rank_in_league,
+    })),
   };
 }
 

@@ -192,3 +192,21 @@ export interface HrRaceResponse {
   season: number;
   leaders: HrRaceEntry[];
 }
+
+export interface StatDistributionEntry {
+  teamAbbrev: string;
+  teamName: string;
+  teamColor: string;
+  value: number;
+  rank: number;
+}
+
+export interface StatDistributionResponse {
+  season: number;
+  statName: string;
+  statLabel: string;
+  /** true when lower values are better (ERA, FIP, errors/game, etc.) */
+  lowerIsBetter: boolean;
+  leagueMean: number;
+  entries: StatDistributionEntry[];
+}

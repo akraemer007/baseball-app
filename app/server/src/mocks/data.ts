@@ -322,6 +322,49 @@ export function getPlayer(playerId: string, season: number): PlayerResponse {
   return { season, seasonLine, gameLog, cumulative, statcast };
 }
 
+/** Mock equivalent of gold_team_stat_vs_league — plausible values per team. */
+export function getStatDistribution(stat: string, season: number) {
+  const STAT_DEFS: Record<string, { label: string; range: [number, number]; lowerIsBetter?: boolean; decimals?: number }> = {
+    runs_per_game: { label: 'R/G', range: [2.8, 5.8] },
+    hr_per_game: { label: 'HR/G', range: [0.5, 1.7] },
+    avg: { label: 'AVG', range: [0.220, 0.280], decimals: 3 },
+    obp: { label: 'OBP', range: [0.290, 0.360], decimals: 3 },
+    slg: { label: 'SLG', range: [0.360, 0.470], decimals: 3 },
+    ops: { label: 'OPS', range: [0.650, 0.820], decimals: 3 },
+    ops_plus: { label: 'OPS+', range: [80, 125] },
+    era: { label: 'ERA', range: [3.10, 5.30], lowerIsBetter: true },
+    era_minus: { label: 'ERA-', range: [75, 125], lowerIsBetter: true },
+    fip: { label: 'FIP', range: [3.20, 5.10], lowerIsBetter: true },
+    k_per_9: { label: 'K/9', range: [6.5, 10.5] },
+    errors_per_game: { label: 'E/G', range: [0.3, 0.8], lowerIsBetter: true },
+  };
+  const def = STAT_DEFS[stat] ?? STAT_DEFS.ops;
+  const [lo, hi] = def.range;
+  const decimals = def.decimals ?? 2;
+  const entries = Object.values(TEAMS).map((t) => {
+    const r = mulberry32(hashSeed(t.id, season, stat));
+    const raw = lo + r() * (hi - lo);
+    return {
+      teamAbbrev: t.abbrev,
+      teamName: t.name,
+      teamColor: t.color,
+      value: Number(raw.toFixed(decimals)),
+      rank: 0, // filled in after sort
+    };
+  });
+  entries.sort((a, b) => (def.lowerIsBetter ? a.value - b.value : b.value - a.value));
+  entries.forEach((e, i) => (e.rank = i + 1));
+  const mean = entries.reduce((s, e) => s + e.value, 0) / entries.length;
+  return {
+    season,
+    statName: stat,
+    statLabel: def.label,
+    lowerIsBetter: !!def.lowerIsBetter,
+    leagueMean: Number(mean.toFixed(decimals)),
+    entries,
+  };
+}
+
 export function getHrRace(season: number) {
   // Top 10 mock HR chasers. Each is a series of cumulative HR per game #.
   const leaderTeams = [
