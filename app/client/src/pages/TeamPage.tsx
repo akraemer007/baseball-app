@@ -130,10 +130,9 @@ export default function TeamPage() {
         </div>
       )}
 
-      <div className="grid grid-2">
-        <div className="card">
-          <h3>Percentile vs. league</h3>
-          <div className="percentile-list">
+      <div className="card">
+        <h3>Percentile vs. league</h3>
+        <div className="percentile-list percentile-list-wide">
             {percentileStats.map((s) => {
               const isOpen = expandedStat === s.statKey;
               return (
@@ -194,73 +193,72 @@ export default function TeamPage() {
               </div>
               );
             })}
-          </div>
         </div>
+      </div>
 
-        <div>
-          <div className="card">
-            <h3>Last 10</h3>
-            <table className="stat-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Matchup</th>
-                  <th>Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentGames.map((g) => {
-                  const wonByTeam = g.winnerTeamId === team.id;
-                  return (
-                    <tr key={g.gameId}>
-                      <td className="mono">{g.date.slice(5)}</td>
-                      <td>
-                        <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
-                        <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
-                      </td>
-                      <td className="num">
-                        <span
-                          className="pill"
-                          style={{
-                            background: wonByTeam ? team.color : 'var(--border)',
-                            color: wonByTeam ? '#fff' : 'var(--text-dim)',
-                          }}
-                        >
-                          {wonByTeam ? 'W' : 'L'}
-                        </span>{' '}
-                        {g.awayScore}-{g.homeScore}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="card">
-            <h3>Upcoming</h3>
-            <table className="stat-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Matchup</th>
-                  <th>Home WP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {upcomingGames.map((g) => (
+      <div className="grid grid-2">
+        <div className="card">
+          <h3>Last 10</h3>
+          <table className="stat-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Matchup</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentGames.map((g) => {
+                const wonByTeam = g.winnerTeamId === team.id;
+                return (
                   <tr key={g.gameId}>
                     <td className="mono">{g.date.slice(5)}</td>
                     <td>
                       <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
                       <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
                     </td>
-                    <td className="num">{(g.impliedHomeWinProb * 100).toFixed(0)}%</td>
+                    <td className="num">
+                      <span
+                        className="pill"
+                        style={{
+                          background: wonByTeam ? team.color : 'var(--border)',
+                          color: wonByTeam ? '#fff' : 'var(--text-dim)',
+                        }}
+                      >
+                        {wonByTeam ? 'W' : 'L'}
+                      </span>{' '}
+                      {g.awayScore}-{g.homeScore}
+                    </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="card">
+          <h3>Upcoming</h3>
+          <table className="stat-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Matchup</th>
+                <th>Home WP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {upcomingGames.map((g) => (
+                <tr key={g.gameId}>
+                  <td className="mono">{g.date.slice(5)}</td>
+                  <td>
+                    <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
+                    <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
+                  </td>
+                  <td className="num">{(g.impliedHomeWinProb * 100).toFixed(0)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
