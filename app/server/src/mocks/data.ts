@@ -89,16 +89,24 @@ function buildTrajectory(teamId: string, season: number, baselineSkill: number):
   const points: TeamTrajectory['points'] = [];
   let w = 0;
   let l = 0;
-  // Each team has its own "true talent" — seeded per (team, season).
-  // baselineSkill ∈ [0.40, 0.60] (win rate); then add day-to-day variance.
-  for (let game = 1; game <= 162; game++) {
-    const streakModifier = Math.sin(game / 12 + hashSeed(teamId) % 100) * 0.03;
+  // MLB regular season: opening day ~March 26, 162 games over ~186 days, so
+  // ~0.87 games/day (teams have scheduled off-days). For a current/in-flight
+  // season, cap at how many games should have been played by today.
+  const openingDay = new Date(`${season}-03-26T00:00:00Z`);
+  const now = new Date();
+  const daysInSeason = (now.getTime() - openingDay.getTime()) / (1000 * 60 * 60 * 24);
+  const gamesToSimulate =
+    now.getUTCFullYear() > season
+      ? 162 // past season: full 162
+      : Math.max(0, Math.min(162, Math.floor(daysInSeason * 0.87)));
+
+  for (let game = 1; game <= gamesToSimulate; game++) {
+    const streakModifier = Math.sin(game / 12 + (hashSeed(teamId) % 100)) * 0.03;
     const winProb = baselineSkill + streakModifier + (rand() - 0.5) * 0.08;
     if (rand() < winProb) w++;
     else l++;
-    // Emit a point every game for a rich trajectory.
     points.push({
-      date: addDays(`${season}-03-28`, game + Math.floor(game / 6)),
+      date: addDays(`${season}-03-26`, Math.round(game / 0.87)),
       wMinusL: w - l,
       gamesPlayed: game,
     });

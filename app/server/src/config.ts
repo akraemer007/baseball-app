@@ -18,6 +18,7 @@ export interface AppConfig {
 }
 
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,6 +41,27 @@ export const config: AppConfig = {
   clientSecret: process.env.DATABRICKS_CLIENT_SECRET,
   // In prod the compiled server runs from server/dist, so ../../client/dist resolves
   // to app/client/dist. In dev the client is served by Vite on a different port.
-  clientStaticDir: path.resolve(__dirname, '../../client/dist'),
+  // Try several candidate locations so we work in both dev (ts-node) and
+  // prod (tsc --outDir dist with rootDir=..). The first one that has an
+  // index.html wins; if none exist, the server serves a fallback text page.
+  clientStaticDir: resolveClientDir(__dirname),
   useRealSql: process.env.USE_REAL_SQL === 'true',
 };
+
+function resolveClientDir(serverDir: string): string {
+  // Env override wins (lets deployment pin the exact path).
+  if (process.env.CLIENT_DIST_DIR) return path.resolve(process.env.CLIENT_DIST_DIR);
+  const candidates = [
+    // Dev: src/ next to client/
+    path.resolve(serverDir, '../../client/dist'),
+    // Prod with rootDir='..': dist/server/src/ -> ../../../../client/dist
+    path.resolve(serverDir, '../../../../client/dist'),
+    // Monorepo deploy layout: <cwd>/app/client/dist
+    path.resolve(process.cwd(), 'client/dist'),
+    path.resolve(process.cwd(), '../client/dist'),
+  ];
+  for (const c of candidates) {
+    if (existsSync(path.join(c, 'index.html'))) return c;
+  }
+  return candidates[0];
+}

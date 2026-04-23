@@ -59,19 +59,6 @@ export function DivisionTrajectoryChart({
     const x = d3.scaleLinear().domain([0, maxGames]).range([0, innerW]);
     const y = d3.scaleLinear().domain([-yBound, yBound]).range([innerH, 0]);
 
-    // Division envelope (max & min W-L at each game number) for the shaded band.
-    const games = d3.range(1, maxGames + 1);
-    const envelope = games.map((g) => {
-      const vals = divTrajectories
-        .map((t) => t.points.find((p) => p.gamesPlayed === g)?.wMinusL)
-        .filter((v): v is number => typeof v === 'number');
-      return {
-        g,
-        hi: vals.length ? Math.max(...vals) : 0,
-        lo: vals.length ? Math.min(...vals) : 0,
-      };
-    });
-
     return {
       margin,
       innerW,
@@ -79,8 +66,8 @@ export function DivisionTrajectoryChart({
       x,
       y,
       yBound,
+      maxGames,
       divTrajectories,
-      envelope,
     };
   }, [division, trajectories, width, height]);
 
@@ -92,7 +79,7 @@ export function DivisionTrajectoryChart({
     );
   }
 
-  const { margin, innerW, innerH, x, y, divTrajectories, envelope } = chart;
+  const { margin, innerW, innerH, x, y, maxGames, divTrajectories } = chart;
 
   const lineGen = d3
     .line<{ gamesPlayed: number; wMinusL: number }>()
@@ -100,23 +87,10 @@ export function DivisionTrajectoryChart({
     .y((d) => y(d.wMinusL))
     .curve(d3.curveCatmullRom.alpha(0.5));
 
-  const envelopeArea = d3
-    .area<{ g: number; hi: number; lo: number }>()
-    .x((d) => x(d.g))
-    .y0((d) => y(d.lo))
-    .y1((d) => y(d.hi))
-    .curve(d3.curveCatmullRom.alpha(0.5));
-
   return (
     <div ref={wrapRef} style={{ width: '100%', height }}>
       <svg width={width} height={height}>
         <g transform={`translate(${margin.left}, ${margin.top})`}>
-          {/* Shaded envelope between division leader and last place */}
-          <path
-            d={envelopeArea(envelope) ?? undefined}
-            fill="rgba(244, 81, 108, 0.12)"
-          />
-
           {/* Horizontal reference lines */}
           {[-20, -10, 0, 10, 20].map((v) => (
             <line
@@ -177,7 +151,7 @@ export function DivisionTrajectoryChart({
             fill="rgba(143, 163, 192, 0.8)"
             fontFamily="var(--mono)"
           >
-            {`game ${Math.max(...envelope.map((e) => e.g))}`}
+            {`game ${maxGames}`}
           </text>
 
           {/* Team abbrev labels at the right edge */}
