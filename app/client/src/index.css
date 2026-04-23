@@ -689,72 +689,26 @@ table.stat-table td.top-performer {
   font-size: 0.85rem;
 }
 
-.percentile-bar-wrap {
+/* Host for the StatDistributionSpark mini strip-plot. Fixed height so
+   the row grid doesn't reflow when the query resolves from the
+   fallback bar to the SVG spark. */
+.percentile-spark-wrap {
   position: relative;
-  height: 8px;
+  height: 36px;
+}
+
+/* Thin bar shown while the distribution query is in flight so the
+   layout doesn't visibly jank when the spark swaps in. */
+.percentile-spark-fallback {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  left: 0;
+  right: 0;
+  height: 6px;
   background: rgba(30, 51, 84, 0.1);
   border-radius: 2px;
-  /* overflow visible so the median-tick tooltip can escape the 8px strip */
-}
-
-.percentile-bar {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 250ms ease-out;
-}
-
-.percentile-median {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  left: calc(50% - 1px);
-  width: 2px;
-  background: #000;
-  border-radius: 1.5px;
-  outline: none;
-  cursor: help;
-  z-index: 2;
-}
-
-/* Wider invisible hit area so the 2px tick is easy to hover. */
-.percentile-median::before {
-  content: '';
-  position: absolute;
-  top: -4px;
-  bottom: -4px;
-  left: -8px;
-  right: -8px;
-}
-
-.percentile-median:hover,
-.percentile-median:focus {
-  background: var(--accent);
-}
-
-.percentile-median-tip {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #0a1628;
-  color: #e8eef7;
-  border-radius: 3px;
-  padding: 0.25rem 0.45rem;
-  font-size: 0.7rem;
-  font-family: var(--mono);
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 120ms ease-out, visibility 120ms;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-  z-index: 5;
-}
-
-.percentile-median:hover .percentile-median-tip,
-.percentile-median:focus .percentile-median-tip {
-  opacity: 1;
-  visibility: visible;
+  overflow: hidden;
 }
 
 .percentile-foot {

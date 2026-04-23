@@ -8,9 +8,17 @@ import {
   savantBoxScoreUrl,
   savantPreviewUrl,
 } from '../lib/savant';
-import type { LeagueResponse, StatDistributionResponse, TeamResponse } from '@shared/types';
+import type {
+  LeagueResponse,
+  PercentileStat,
+  StatDistributionResponse,
+  TeamResponse,
+} from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
-import { StatDistributionChart } from '../charts/StatDistributionChart';
+import {
+  StatDistributionChart,
+  StatDistributionSpark,
+} from '../charts/StatDistributionChart';
 import { InfoTip } from '../components/InfoTip';
 
 const CATEGORY_LABELS: Record<'batting' | 'pitching' | 'fielding', string> = {
@@ -176,79 +184,21 @@ export default function TeamPage() {
           <div key={cat} className="card">
             <h3>{CATEGORY_LABELS[cat]}</h3>
             <div className="percentile-list percentile-list-wide">
-              {rows.map((s) => {
-                const isOpen = expandedStat === s.statKey;
-                return (
-                  <div
-                    key={s.statKey}
-                    className="percentile-row percentile-row-expandable"
-                    data-open={isOpen}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setExpandedStat(isOpen ? null : s.statKey)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setExpandedStat(isOpen ? null : s.statKey);
-                      }
-                    }}
-                  >
-                    <div className="percentile-label">
-                      <span>
-                        {s.label}
-                        {STAT_DEFINITIONS[s.statKey] && (
-                          <InfoTip>{STAT_DEFINITIONS[s.statKey]}</InfoTip>
-                        )}
-                        <span className="percentile-row-chevron">▸</span>
-                      </span>
-                      <span className="muted mono">{s.value}</span>
-                    </div>
-                    <div className="percentile-bar-wrap">
-                      <div
-                        className="percentile-bar"
-                        style={{
-                          width: `${s.leagueRankPercentile}%`,
-                          background:
-                            s.leagueRankPercentile >= 66
-                              ? team.color
-                              : s.leagueRankPercentile >= 33
-                                ? 'rgba(143, 163, 192, 0.65)'
-                                : 'rgba(231, 76, 60, 0.8)',
-                        }}
-                      />
-                      <div
-                        className="percentile-median"
-                        tabIndex={0}
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                      >
-                        {s.leagueMean !== undefined && (
-                          <span className="percentile-median-tip" role="tooltip">
-                            League avg {s.leagueMean}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="percentile-foot muted mono">
-                      {s.leagueRankPercentile}th pctl
-                    </div>
-                    {isOpen && (
-                      <div
-                        className="stat-dist-container"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <StatDistRow
-                          statKey={s.statKey}
-                          season={season}
-                          currentTeamAbbrev={team.id}
-                          primaryTeamAbbrev={primaryTeam}
-                          secondaryTeamAbbrev={secondaryTeam}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {rows.map((s) => (
+                <PercentileRow
+                  key={s.statKey}
+                  stat={s}
+                  season={season}
+                  teamColor={team.color}
+                  currentTeamAbbrev={team.id}
+                  primaryTeamAbbrev={primaryTeam}
+                  secondaryTeamAbbrev={secondaryTeam}
+                  isOpen={expandedStat === s.statKey}
+                  onToggle={() =>
+                    setExpandedStat(expandedStat === s.statKey ? null : s.statKey)
+                  }
+                />
+              ))}
             </div>
           </div>
         );
@@ -386,38 +336,105 @@ export default function TeamPage() {
   );
 }
 
-function StatDistRow({
-  statKey,
+function PercentileRow({
+  stat,
   season,
+  teamColor,
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
+  isOpen,
+  onToggle,
 }: {
-  statKey: string;
+  stat: PercentileStat;
   season: number;
+  teamColor: string;
   currentTeamAbbrev: string;
   primaryTeamAbbrev: string;
   secondaryTeamAbbrev: string;
+  isOpen: boolean;
+  onToggle: () => void;
 }) {
-  const { data, isLoading, error } = useQuery<StatDistributionResponse>({
-    queryKey: ['stat-dist', statKey, season],
+  // Always fetch the distribution so the row's sparkline is populated
+  // up-front. React-Query dedupes by key, so the expanded
+  // StatDistributionChart reuses the same cached response.
+  const { data } = useQuery<StatDistributionResponse>({
+    queryKey: ['stat-dist', stat.statKey, season],
     queryFn: () =>
       apiGet<StatDistributionResponse>(
-        `/api/league/stat-distribution?stat=${encodeURIComponent(statKey)}&season=${season}`,
+        `/api/league/stat-distribution?stat=${encodeURIComponent(stat.statKey)}&season=${season}`,
       ),
   });
-  if (isLoading) return <p className="muted" style={{ margin: 0 }}>Loading…</p>;
-  if (error || !data) return <p className="muted" style={{ margin: 0 }}>Failed to load distribution.</p>;
+
   return (
-    <StatDistributionChart
-      entries={data.entries}
-      lowerIsBetter={data.lowerIsBetter}
-      leagueMean={data.leagueMean}
-      currentTeamAbbrev={currentTeamAbbrev}
-      primaryTeamAbbrev={primaryTeamAbbrev}
-      secondaryTeamAbbrev={secondaryTeamAbbrev}
-      height={160}
-    />
+    <div
+      className="percentile-row percentile-row-expandable"
+      data-open={isOpen}
+      role="button"
+      tabIndex={0}
+      onClick={onToggle}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+    >
+      <div className="percentile-label">
+        <span>
+          {stat.label}
+          {STAT_DEFINITIONS[stat.statKey] && (
+            <InfoTip>{STAT_DEFINITIONS[stat.statKey]}</InfoTip>
+          )}
+          <span className="percentile-row-chevron">▸</span>
+        </span>
+        <span className="muted mono">{stat.value}</span>
+      </div>
+      <div className="percentile-spark-wrap">
+        {data ? (
+          <StatDistributionSpark
+            entries={data.entries}
+            lowerIsBetter={data.lowerIsBetter}
+            leagueMean={data.leagueMean}
+            currentTeamAbbrev={currentTeamAbbrev}
+            primaryTeamAbbrev={primaryTeamAbbrev}
+            secondaryTeamAbbrev={secondaryTeamAbbrev}
+          />
+        ) : (
+          // Thin fallback bar while the distribution is fetching so the
+          // row's layout doesn't jank.
+          <div className="percentile-spark-fallback">
+            <div
+              style={{
+                width: `${stat.leagueRankPercentile}%`,
+                background: teamColor,
+                height: '100%',
+                opacity: 0.6,
+              }}
+            />
+          </div>
+        )}
+      </div>
+      <div className="percentile-foot muted mono">
+        {stat.leagueRankPercentile}th pctl
+      </div>
+      {isOpen && data && (
+        <div
+          className="stat-dist-container"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <StatDistributionChart
+            entries={data.entries}
+            lowerIsBetter={data.lowerIsBetter}
+            leagueMean={data.leagueMean}
+            currentTeamAbbrev={currentTeamAbbrev}
+            primaryTeamAbbrev={primaryTeamAbbrev}
+            secondaryTeamAbbrev={secondaryTeamAbbrev}
+            height={160}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
