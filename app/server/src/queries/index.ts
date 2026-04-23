@@ -56,8 +56,8 @@ const INTEGER_STATS = new Set([
 ]);
 
 /** Which card each stat belongs to on the Team page. */
-const STAT_CATEGORIES: Record<string, 'batting' | 'pitching' | 'fielding' | 'overall'> = {
-  run_diff: 'overall',
+const STAT_CATEGORIES: Record<string, 'batting' | 'pitching' | 'fielding'> = {
+  run_diff: 'fielding',
   hits_total: 'batting',
   hr_total: 'batting',
   walks_total: 'batting',

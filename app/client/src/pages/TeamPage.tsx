@@ -8,11 +8,10 @@ import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
 import { StatDistributionChart } from '../charts/StatDistributionChart';
 import { InfoTip } from '../components/InfoTip';
 
-const CATEGORY_LABELS: Record<'batting' | 'pitching' | 'fielding' | 'overall', string> = {
-  overall: 'Overall — percentile vs. league',
+const CATEGORY_LABELS: Record<'batting' | 'pitching' | 'fielding', string> = {
   batting: 'Batting — percentile vs. league',
   pitching: 'Pitching — percentile vs. league',
-  fielding: 'Fielding — percentile vs. league',
+  fielding: 'Other — percentile vs. league',
 };
 
 /**
@@ -39,6 +38,9 @@ const STAT_ORDER: Record<string, number> = {
   era_minus: 13,
   strikeouts_pitching_total: 14,
   fip: 15,
+  // Other
+  run_diff: 16,
+  errors_per_game: 17,
 };
 
 const STAT_DEFINITIONS: Record<string, string> = {
@@ -157,7 +159,7 @@ export default function TeamPage() {
         </div>
       )}
 
-      {(['overall', 'batting', 'pitching', 'fielding'] as const).map((cat) => {
+      {(['batting', 'pitching', 'fielding'] as const).map((cat) => {
         const rows = percentileStats
           .filter((s) => s.category === cat)
           .sort(
