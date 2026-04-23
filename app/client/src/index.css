@@ -1,15 +1,22 @@
-/* Global styles: dark navy Jon Bois-ish aesthetic. */
+/* Global styles: light theme so team colors pop. */
 
 :root {
-  --bg: #0a1628;
-  --bg-elev: #112036;
-  --border: #1e3354;
-  --text: #e8eef7;
-  --text-dim: #8fa3c0;
-  --accent: #f5d06f;
+  --bg: #ffffff;
+  --bg-elev: #f7f9fc;
+  --border: #dde3ec;
+  --text: #0a1628;
+  --text-dim: #5a6a80;
+  --accent: #b35500;
   --accent-hot: #e74c3c;
   --cubs-blue: #0e3386;
   --cubs-red: #cc3433;
+
+  /* Chart-specific — referenced from SVG inline styles in chart components. */
+  --chart-grid-strong: rgba(10, 22, 40, 0.45);
+  --chart-grid-soft: rgba(10, 22, 40, 0.12);
+  --chart-grid-faint: rgba(10, 22, 40, 0.06);
+  --chart-tick-text: rgba(60, 80, 110, 0.85);
+
   --mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -124,7 +131,7 @@ code,
   align-items: center;
   gap: 1.5rem;
   padding: 0.75rem 1.5rem;
-  background: #07101f;
+  background: #f0f3f8;
   border-bottom: 1px solid var(--border);
 }
 
@@ -411,8 +418,9 @@ table.stat-table td.num {
   z-index: 10;
   left: 50%;
   transform: translateX(-50%);
-  background: #07101f;
-  border: 1px solid var(--border);
+  background: #0a1628;
+  color: #e8eef7;
+  border: 1px solid #0a1628;
   border-radius: 4px;
   padding: 0.5rem 0.65rem;
   min-width: 200px;
@@ -478,7 +486,7 @@ table.stat-table td.num {
 }
 
 .stat-dist-container {
-  background: rgba(10, 22, 40, 0.55);
+  background: rgba(10, 22, 40, 0.035);
   border: 1px solid var(--border);
   border-radius: 4px;
   margin-top: 0.5rem;
@@ -488,13 +496,14 @@ table.stat-table td.num {
 .stat-dist-tooltip {
   position: absolute;
   transform: translate(-50%, -100%);
-  background: #07101f;
-  border: 1px solid var(--border);
+  background: #0a1628;
+  color: #e8eef7;
+  border: 1px solid #0a1628;
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-size: 0.75rem;
   pointer-events: none;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
   white-space: nowrap;
   z-index: 5;
 }
@@ -527,7 +536,7 @@ table.stat-table td.num {
   border: 1px solid transparent;
   border-radius: 3px;
   color: var(--text-dim);
-  background: rgba(30, 51, 84, 0.4);
+  background: rgba(30, 51, 84, 0.08);
   letter-spacing: 0.03em;
   text-transform: uppercase;
   cursor: pointer;
@@ -535,7 +544,7 @@ table.stat-table td.num {
 
 .team-chip.active {
   color: var(--text);
-  background: rgba(30, 51, 84, 0.9);
+  background: rgba(30, 51, 84, 0.18);
 }
 
 .team-chip-dot {
@@ -600,7 +609,7 @@ table.stat-table td.num {
 .percentile-bar-wrap {
   position: relative;
   height: 8px;
-  background: rgba(30, 51, 84, 0.9);
+  background: rgba(30, 51, 84, 0.1);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -617,7 +626,7 @@ table.stat-table td.num {
   bottom: -2px;
   left: 50%;
   width: 1px;
-  background: rgba(232, 238, 247, 0.4);
+  background: rgba(10, 22, 40, 0.35);
 }
 
 .percentile-foot {

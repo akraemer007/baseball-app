@@ -75,7 +75,7 @@ export function StatDistributionChart({
             x2={innerW}
             y1={midY}
             y2={midY}
-            stroke="rgba(232, 238, 247, 0.12)"
+            stroke="rgba(10, 22, 40, 0.15)"
             strokeWidth={1}
           />
 
@@ -84,7 +84,7 @@ export function StatDistributionChart({
             <line
               y1={0}
               y2={innerH}
-              stroke="rgba(232, 238, 247, 0.35)"
+              stroke="rgba(10, 22, 40, 0.45)"
               strokeWidth={1}
               strokeDasharray="2 3"
             />
@@ -94,7 +94,7 @@ export function StatDistributionChart({
               textAnchor="middle"
               fontSize={9}
               fontFamily="var(--mono)"
-              fill="rgba(143, 163, 192, 0.85)"
+              fill="rgba(60, 80, 110, 0.85)"
             >
               lg avg {leagueMean.toFixed(leagueMean < 1 ? 3 : 2)}
             </text>
@@ -117,8 +117,8 @@ export function StatDistributionChart({
                 <circle
                   r={isCurrent ? 7 : 5}
                   fill={fill}
-                  stroke={isCurrent ? '#ffffff' : 'rgba(10, 22, 40, 0.8)'}
-                  strokeWidth={isCurrent ? 2 : 1}
+                  stroke={isCurrent ? '#0a1628' : 'rgba(10, 22, 40, 0.35)'}
+                  strokeWidth={isCurrent ? 2.5 : 0.75}
                   opacity={hovered != null && hovered !== i ? 0.35 : 0.95}
                 />
                 {(isCurrent || hovered === i) && (
@@ -145,7 +145,7 @@ export function StatDistributionChart({
             textAnchor="start"
             fontSize={9}
             fontFamily="var(--mono)"
-            fill="rgba(143, 163, 192, 0.7)"
+            fill="rgba(60, 80, 110, 0.8)"
             style={{ textTransform: 'uppercase' }}
           >
             ← worse
@@ -156,7 +156,7 @@ export function StatDistributionChart({
             textAnchor="end"
             fontSize={9}
             fontFamily="var(--mono)"
-            fill="rgba(143, 163, 192, 0.7)"
+            fill="rgba(60, 80, 110, 0.8)"
             style={{ textTransform: 'uppercase' }}
           >
             better →

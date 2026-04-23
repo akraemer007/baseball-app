@@ -105,7 +105,7 @@ export function DivisionTrajectoryChart({
               x2={innerW}
               y1={y(v)}
               y2={y(v)}
-              stroke={v === 0 ? 'rgba(232,238,247,0.35)' : 'rgba(232,238,247,0.07)'}
+              stroke={v === 0 ? 'rgba(10, 22, 40, 0.45)' : 'rgba(10, 22, 40, 0.1)'}
               strokeWidth={v === 0 ? 1 : 0.5}
               strokeDasharray={v === 0 ? undefined : '2 3'}
             />
@@ -120,7 +120,7 @@ export function DivisionTrajectoryChart({
               dy="0.32em"
               textAnchor="end"
               fontSize={9}
-              fill="rgba(143, 163, 192, 0.8)"
+              fill="rgba(60, 80, 110, 0.85)"
               fontFamily="var(--mono)"
             >
               {v > 0 ? `+${v}` : v}
@@ -154,7 +154,7 @@ export function DivisionTrajectoryChart({
             y={innerH + 16}
             textAnchor="end"
             fontSize={9}
-            fill="rgba(143, 163, 192, 0.8)"
+            fill="rgba(60, 80, 110, 0.85)"
             fontFamily="var(--mono)"
           >
             {`game ${maxGames}`}

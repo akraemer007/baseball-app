@@ -116,7 +116,7 @@ export function CumulativeRaceChart({
                 x2={innerW}
                 y1={y(t)}
                 y2={y(t)}
-                stroke="rgba(232,238,247,0.08)"
+                stroke="rgba(10, 22, 40, 0.1)"
                 strokeWidth={0.5}
               />
               <text
@@ -126,7 +126,7 @@ export function CumulativeRaceChart({
                 textAnchor="end"
                 fontSize={10}
                 fontFamily="var(--mono)"
-                fill="rgba(143, 163, 192, 0.85)"
+                fill="rgba(60, 80, 110, 0.85)"
               >
                 {t}
               </text>
@@ -141,7 +141,7 @@ export function CumulativeRaceChart({
                 x2={x(t)}
                 y1={0}
                 y2={innerH}
-                stroke="rgba(232,238,247,0.04)"
+                stroke="rgba(10, 22, 40, 0.06)"
                 strokeWidth={0.5}
               />
               <text
@@ -150,7 +150,7 @@ export function CumulativeRaceChart({
                 textAnchor="middle"
                 fontSize={10}
                 fontFamily="var(--mono)"
-                fill="rgba(143, 163, 192, 0.85)"
+                fill="rgba(60, 80, 110, 0.85)"
               >
                 {t}
               </text>
@@ -166,7 +166,7 @@ export function CumulativeRaceChart({
                 key={s.id}
                 d={lineGen(s.points) ?? undefined}
                 fill="none"
-                stroke={isHighlight ? color : 'rgba(143, 163, 192, 0.35)'}
+                stroke={isHighlight ? color : 'rgba(60, 80, 110, 0.35)'}
                 strokeWidth={isHighlight ? 2.4 : 1.0}
                 style={{
                   filter: isHighlight ? `drop-shadow(0 0 4px ${color})` : undefined,
@@ -189,7 +189,7 @@ export function CumulativeRaceChart({
                 dy="0.32em"
                 fontSize={10}
                 fontFamily="var(--mono)"
-                fill={isHighlight ? color : 'rgba(143, 163, 192, 0.55)'}
+                fill={isHighlight ? color : 'rgba(60, 80, 110, 0.55)'}
                 fontWeight={isHighlight ? 600 : 400}
               >
                 {s.label}
@@ -206,7 +206,7 @@ export function CumulativeRaceChart({
               textAnchor="middle"
               fontSize={10}
               fontFamily="var(--mono)"
-              fill="rgba(143, 163, 192, 0.85)"
+              fill="rgba(60, 80, 110, 0.85)"
               style={{ textTransform: 'uppercase' }}
             >
               {yLabel}
@@ -218,7 +218,7 @@ export function CumulativeRaceChart({
             textAnchor="end"
             fontSize={10}
             fontFamily="var(--mono)"
-            fill="rgba(143, 163, 192, 0.75)"
+            fill="rgba(60, 80, 110, 0.8)"
           >
             {xLabel}
           </text>
