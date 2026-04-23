@@ -241,6 +241,45 @@ if all_pit:
     spark.createDataFrame(all_pit).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{fq}.silver_player_game_pitching")
 
 # COMMAND ----------
+# MAGIC %md ## Parse per-inning linescore → silver_linescore
+
+# COMMAND ----------
+def parse_linescore_payloads(rows):
+    """One row per (game_pk, inning). Only Final games contribute."""
+    seen: dict[tuple[int, int], dict] = {}
+    for r in rows:
+        payload = json.loads(r.payload)
+        for date_entry in payload.get("dates", []):
+            for g in date_entry.get("games", []):
+                if g.get("status", {}).get("abstractGameState") != "Final":
+                    continue
+                game_pk = int(g["gamePk"])
+                linescore = g.get("linescore") or {}
+                for inn in (linescore.get("innings") or []):
+                    num = inn.get("num")
+                    if num is None:
+                        continue
+                    home = inn.get("home") or {}
+                    away = inn.get("away") or {}
+                    seen[(game_pk, int(num))] = {
+                        "game_pk": game_pk,
+                        "inning": int(num),
+                        "home_runs": safe_int(home.get("runs")),
+                        "away_runs": safe_int(away.get("runs")),
+                    }
+    return list(seen.values())
+
+
+linescore_rows = parse_linescore_payloads(schedule_rows)
+print(f"silver_linescore rows: {len(linescore_rows)}")
+if linescore_rows:
+    (
+        spark.createDataFrame(linescore_rows)
+        .write.mode("overwrite").option("overwriteSchema", "true")
+        .saveAsTable(f"{fq}.silver_linescore")
+    )
+
+# COMMAND ----------
 # MAGIC %md ## Build silver_team (one row per team with division/league/colors)
 
 # COMMAND ----------

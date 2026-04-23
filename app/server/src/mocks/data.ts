@@ -401,6 +401,8 @@ export function getHrRace(season: number) {
   return { season, leaders };
 }
 
+const MOCK_GAME_TYPES = ['walkoff', 'comeback', 'pitching_duel', 'blowout', 'standard'] as const;
+
 export function getRecaps(date: string): RecapsResponse {
   const rand = mulberry32(hashSeed(date));
   const recaps = Array.from({ length: 8 }).map((_, i) => {
@@ -414,6 +416,9 @@ export function getRecaps(date: string): RecapsResponse {
     const impliedWinProbOfWinner = Number((0.25 + rand() * 0.6).toFixed(3));
     const dateline = `${home.name.split(' ').slice(-1)[0].toUpperCase()} — `;
     const summary = 'A late-inning rally powers the win in a matchup decided by a single swing of the bat.';
+    const gameType = MOCK_GAME_TYPES[Math.floor(rand() * MOCK_GAME_TYPES.length)];
+    const interestScore = 1 + Math.floor(rand() * 10);
+    const recapLength = interestScore >= 7 ? 'long' : interestScore >= 4 ? 'medium' : 'short';
     return {
       gameId: `${date}-${i}`,
       date,
@@ -431,9 +436,26 @@ export function getRecaps(date: string): RecapsResponse {
       dateline,
       summary,
       blurb: dateline + summary,
+      gameType,
+      interestScore,
+      recapLength: recapLength as 'short' | 'medium' | 'long',
+      narrativeSpine: `${winner.name} held on for the ${Math.abs(homeScore - awayScore)}-run decision.`,
     };
   });
+  recaps.sort((a, b) => (b.interestScore ?? 0) - (a.interestScore ?? 0));
   return { date, recaps };
+}
+
+/** Multi-day mock — returns N most-recent dates ending with `anchor` (default today). */
+export function getRecapsDays(days: number, anchor?: string) {
+  const n = Math.max(1, Math.min(30, Math.floor(days)));
+  const end = anchor ?? new Date().toISOString().slice(0, 10);
+  const groups = Array.from({ length: n }).map((_, i) => {
+    const d = addDays(end, -i);
+    return { date: d, recaps: getRecaps(d).recaps };
+  });
+  const allRecaps = groups.flatMap((g) => g.recaps);
+  return { recaps: allRecaps, days: groups };
 }
 
 export function getProjections(): ProjectionsResponse {

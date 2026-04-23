@@ -7,6 +7,13 @@ resources:
         timezone_id: "America/New_York"
         pause_status: "UNPAUSED"
       max_concurrent_runs: 1
+      parameters:
+        - name: recap_mode
+          default: "yesterday"
+        - name: recap_force
+          default: "false"
+        - name: recap_target_date
+          default: ""
       tasks:
         - task_key: ingest_schedule_and_games
           notebook_task:
@@ -57,7 +64,9 @@ resources:
               catalog: ${var.catalog}
               schema: ${var.schema}
               endpoint: ${var.foundation_model_endpoint}
-              mode: "yesterday"
+              mode: "{{job.parameters.recap_mode}}"
+              force: "{{job.parameters.recap_force}}"
+              target_date: "{{job.parameters.recap_target_date}}"
           environment_key: default_env
 
       environments:

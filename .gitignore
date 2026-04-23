@@ -19,3 +19,7 @@ coverage/
 .claude/
 .ai-dev-kit/
 .mcp.json
+
+# Working docs (not part of the repo)
+news_update.md
+todo.md

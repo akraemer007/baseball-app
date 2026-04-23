@@ -145,6 +145,8 @@ export interface PlayerResponse {
   statcast: StatcastTile;
 }
 
+export type GameType = 'walkoff' | 'comeback' | 'pitching_duel' | 'blowout' | 'standard';
+
 export interface RecapItem {
   gameId: string;
   date: string;
@@ -162,10 +164,26 @@ export interface RecapItem {
   summary: string;
   /** Legacy alias: dateline + summary concatenated (kept for the mock path). */
   blurb: string;
+  /** Python-classified game shape (used to sort and label). */
+  gameType?: GameType;
+  /** 1-10 reader-interest score; higher sorts first within a date. */
+  interestScore?: number;
+  /** short | medium | long — matches the length the writer aimed for. */
+  recapLength?: 'short' | 'medium' | 'long';
+  /** One-sentence story the writer was asked to land. */
+  narrativeSpine?: string;
+}
+
+export interface RecapsDayGroup {
+  date: string;
+  recaps: RecapItem[];
 }
 
 export interface RecapsResponse {
-  date: string;
+  /** Single-date mode returns this. */
+  date?: string;
+  /** Multi-day (?days=N) mode returns this. Groups are date-desc, recaps inside each are interest-desc. */
+  days?: RecapsDayGroup[];
   recaps: RecapItem[];
 }
 
