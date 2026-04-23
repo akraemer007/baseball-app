@@ -67,9 +67,11 @@ export default function NewsPage() {
                   <div className="proj-lean muted mono">
                     lean: {homeFav ? g.homeTeamId : g.awayTeamId} ({favPct.toFixed(0)}%)
                   </div>
-                  <div className="muted" style={{ fontSize: '0.75rem' }}>
-                    {g.probableAwayPitcherId} / {g.probableHomePitcherId}
-                  </div>
+                  {(g.probableAwayPitcherId || g.probableHomePitcherId) && (
+                    <div className="muted" style={{ fontSize: '0.75rem' }}>
+                      {g.probableAwayPitcherId ?? 'TBD'} vs {g.probableHomePitcherId ?? 'TBD'}
+                    </div>
+                  )}
                 </div>
               );
             })}

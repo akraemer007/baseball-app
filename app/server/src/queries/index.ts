@@ -689,6 +689,8 @@ interface ProjectionRow {
   away_abbrev: string;
   home_probable_pitcher_id: number | null;
   away_probable_pitcher_id: number | null;
+  home_probable_pitcher_name: string | null;
+  away_probable_pitcher_name: string | null;
   home_win_prob: number | null;
 }
 
@@ -699,13 +701,19 @@ export async function getProjectionsFromWarehouse(): Promise<ProjectionsResponse
             g.home_team_id, h.abbrev AS home_abbrev,
             g.away_team_id, a.abbrev AS away_abbrev,
             g.home_probable_pitcher_id, g.away_probable_pitcher_id,
+            hp.player_name AS home_probable_pitcher_name,
+            ap.player_name AS away_probable_pitcher_name,
             e.home_win_prob
        FROM silver_game g
        JOIN silver_team h ON h.team_id = g.home_team_id
        JOIN silver_team a ON a.team_id = g.away_team_id
+       LEFT JOIN silver_player_season hp
+         ON hp.player_id = g.home_probable_pitcher_id AND hp.season = g.season
+       LEFT JOIN silver_player_season ap
+         ON ap.player_id = g.away_probable_pitcher_id AND ap.season = g.season
        LEFT JOIN gold_game_elo e USING (game_pk)
       WHERE g.game_date = '${today}'
-        AND g.status IN ('Preview', 'Scheduled')
+        AND g.status != 'Final'
       ORDER BY g.game_pk`
   );
   return {
@@ -715,12 +723,12 @@ export async function getProjectionsFromWarehouse(): Promise<ProjectionsResponse
       date: g.game_date,
       homeTeamId: g.home_abbrev,
       awayTeamId: g.away_abbrev,
-      probableHomePitcherId: g.home_probable_pitcher_id
-        ? String(g.home_probable_pitcher_id)
-        : null,
-      probableAwayPitcherId: g.away_probable_pitcher_id
-        ? String(g.away_probable_pitcher_id)
-        : null,
+      probableHomePitcherId:
+        g.home_probable_pitcher_name ??
+        (g.home_probable_pitcher_id ? String(g.home_probable_pitcher_id) : null),
+      probableAwayPitcherId:
+        g.away_probable_pitcher_name ??
+        (g.away_probable_pitcher_id ? String(g.away_probable_pitcher_id) : null),
       impliedHomeWinProb: g.home_win_prob ?? 0.5,
     })),
   };
