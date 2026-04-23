@@ -236,7 +236,7 @@ table.stat-table td.num {
 }
 
 .division-card-button:hover {
-  border-color: rgba(245, 208, 111, 0.55);
+  border-color: rgba(10, 22, 40, 0.35);
 }
 
 .division-card-button.is-active {
@@ -264,7 +264,7 @@ table.stat-table td.num {
 }
 
 .standings-card:hover {
-  border-color: rgba(245, 208, 111, 0.55);
+  border-color: rgba(10, 22, 40, 0.35);
 }
 
 .standings-card.is-active {
@@ -354,7 +354,7 @@ table.stat-table td.num {
 }
 
 .team-select:hover {
-  border-color: rgba(245, 208, 111, 0.55);
+  border-color: rgba(10, 22, 40, 0.35);
 }
 
 .team-select:focus {
@@ -466,11 +466,11 @@ table.stat-table td.num {
 }
 
 .percentile-row-expandable:hover {
-  background: rgba(245, 208, 111, 0.05);
+  background: rgba(10, 22, 40, 0.03);
 }
 
 .percentile-row-expandable[data-open='true'] {
-  background: rgba(245, 208, 111, 0.08);
+  background: rgba(10, 22, 40, 0.05);
 }
 
 .percentile-row-chevron {
