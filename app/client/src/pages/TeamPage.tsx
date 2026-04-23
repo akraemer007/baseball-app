@@ -96,32 +96,19 @@ export default function TeamPage() {
       <p className="muted" style={{ marginTop: '0.25rem' }}>
         <span className="mono" style={{ fontSize: '1.1rem', color: 'var(--text)' }}>
           {record.wins}-{record.losses}
-        </span>
-        <InfoTip>Wins and losses in regular-season games completed this year.</InfoTip>
-        {' '}({record.winPct.toFixed(3)})
-        <InfoTip>Wins divided by games played.</InfoTip>
-        {' '}· GB{' '}
+        </span>{' '}
+        ({record.winPct.toFixed(3)}) · GB{' '}
         <span className="mono">{formatGB(record.gamesBehind)}</span>
-        <InfoTip>
-          Games behind the division leader. Each "game" is a full win, so a half-game
-          back means the leader has played one extra game and won it. A dash means
-          this team <em>is</em> the division leader.
-        </InfoTip>
         {' '}· Run diff{' '}
         <span className="mono">
           {record.runDiff >= 0 ? '+' : ''}
           {record.runDiff}
-        </span>
-        <InfoTip>
-          Total runs scored minus total runs allowed this season. Big positives usually
-          track with a good record; large negatives usually don't last.
-        </InfoTip>
-        {' '}· Streak{' '}
+        </span>{' '}
+        · Streak{' '}
         <span className={`pill${streak.type === 'L' ? ' upset' : ''}`}>
           {streak.type}
           {streak.length}
         </span>
-        <InfoTip>Current consecutive wins (W) or losses (L).</InfoTip>
       </p>
 
       {teamDivision && leagueQ.data && (
