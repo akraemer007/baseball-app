@@ -326,6 +326,40 @@ table.stat-table td.num {
   font-size: 0.72rem;
 }
 
+/* League page header: primary/secondary team pickers */
+.league-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.prefs-bar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.pref-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.pref-label {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.pref-select {
+  min-width: 150px;
+}
+
 /* Team page header: team name + team picker side-by-side */
 .team-header-row {
   display: flex;
@@ -710,6 +744,7 @@ table.stat-table td.num {
   padding: 0.6rem 0.75rem;
 }
 
+
 .proj-matchup {
   font-size: 0.95rem;
 }
@@ -785,23 +820,20 @@ table.stat-table td.num {
 .pill.game-type-pitching_duel { background: #e0eaff; color: #1d3a8a; }
 .pill.game-type-blowout { background: #ebebeb; color: #4a4a4a; }
 
-/* Cubs / NL-Central recap cards */
-.recap-card-cubs {
-  border-left-color: var(--cubs-blue);
-  background: linear-gradient(to right, rgba(14, 51, 134, 0.05), var(--bg-elev) 40%);
+/* Primary / secondary team tags — color comes inline from the team. */
+.pill.team-tag {
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
-.recap-card-nlc {
-  border-left-color: #0e3386;
-  border-left-width: 3px;
+.pill.team-tag-secondary {
+  background: rgba(10, 22, 40, 0.06);
+  border: 1px solid rgba(10, 22, 40, 0.15);
+  font-weight: 600;
 }
 
-.pill.cubs-tag {
-  background: var(--cubs-blue);
-  color: #fff;
-  font-weight: 700;
-}
-.pill.nlc-tag {
-  background: #dce5f5;
-  color: #0e3386;
+/* Primary-team's-division tag (generic "NL CENTRAL" / "AL WEST" style). */
+.pill.division-tag {
+  background: rgba(10, 22, 40, 0.05);
+  color: var(--text);
   font-weight: 600;
 }

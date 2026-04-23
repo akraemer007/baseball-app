@@ -1,17 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
-import type { ProjectionsResponse, RecapsResponse } from '@shared/types';
-
-const NL_CENTRAL = new Set(['CHC', 'CIN', 'MIL', 'PIT', 'STL']);
-
-function isNLCentralGame(r: { homeTeamId: string; awayTeamId: string }): boolean {
-  return NL_CENTRAL.has(r.homeTeamId.toUpperCase()) || NL_CENTRAL.has(r.awayTeamId.toUpperCase());
-}
-
-function isCubsGame(r: { homeTeamId: string; awayTeamId: string }): boolean {
-  return r.homeTeamId.toUpperCase() === 'CHC' || r.awayTeamId.toUpperCase() === 'CHC';
-}
+import { usePreferences } from '../lib/preferences';
+import type { LeagueResponse, ProjectionsResponse, RecapsResponse } from '@shared/types';
 
 function formatGameType(t: string): string {
   switch (t) {
@@ -30,7 +21,9 @@ function yesterdayIso(): string {
 }
 
 export default function NewsPage() {
+  const season = new Date().getUTCFullYear();
   const [date, setDate] = useState(yesterdayIso());
+  const { primaryTeam, secondaryTeam } = usePreferences();
 
   const recapsQ = useQuery<RecapsResponse>({
     queryKey: ['recaps', date],
@@ -42,13 +35,54 @@ export default function NewsPage() {
     queryFn: () => apiGet<ProjectionsResponse>('/api/projections/today'),
   });
 
+  // League data gives us team colors + division memberships for the
+  // primary-division tag. Shared cache with the League page (5-min stale).
+  const leagueQ = useQuery<LeagueResponse>({
+    queryKey: ['league', season],
+    queryFn: () => apiGet<LeagueResponse>(`/api/league/divisions?season=${season}`),
+  });
+
+  const teamMeta = useMemo(() => {
+    const byAbbrev = new Map<string, { color: string; name: string; divisionId: string }>();
+    for (const d of leagueQ.data?.divisions ?? []) {
+      for (const t of d.teams) {
+        byAbbrev.set(t.id.toUpperCase(), {
+          color: t.color,
+          name: t.name,
+          divisionId: d.id,
+        });
+      }
+    }
+    return byAbbrev;
+  }, [leagueQ.data]);
+
+  const primaryInfo = teamMeta.get(primaryTeam.toUpperCase());
+  const secondaryInfo = teamMeta.get(secondaryTeam.toUpperCase());
+  const primaryDivisionAbbrevs = useMemo(() => {
+    if (!primaryInfo) return new Set<string>();
+    const div = leagueQ.data?.divisions.find((d) => d.id === primaryInfo.divisionId);
+    return new Set((div?.teams ?? []).map((t) => t.id.toUpperCase()));
+  }, [leagueQ.data, primaryInfo]);
+  const primaryDivisionName = useMemo(
+    () => leagueQ.data?.divisions.find((d) => d.id === primaryInfo?.divisionId)?.name ?? '',
+    [leagueQ.data, primaryInfo],
+  );
+
+  const isPrimary = (g: { homeTeamId: string; awayTeamId: string }) =>
+    g.homeTeamId.toUpperCase() === primaryTeam.toUpperCase() ||
+    g.awayTeamId.toUpperCase() === primaryTeam.toUpperCase();
+  const isSecondary = (g: { homeTeamId: string; awayTeamId: string }) =>
+    g.homeTeamId.toUpperCase() === secondaryTeam.toUpperCase() ||
+    g.awayTeamId.toUpperCase() === secondaryTeam.toUpperCase();
+  const isPrimaryDivision = (g: { homeTeamId: string; awayTeamId: string }) =>
+    primaryDivisionAbbrevs.has(g.homeTeamId.toUpperCase()) ||
+    primaryDivisionAbbrevs.has(g.awayTeamId.toUpperCase());
+
   return (
     <div className="page">
       <h1>News</h1>
       <div className="news-date-bar">
-        <label className="muted" style={{ fontSize: '0.85rem' }}>
-          Date:
-        </label>
+        <label className="muted" style={{ fontSize: '0.85rem' }}>Date:</label>
         <input
           type="date"
           className="date-input"
@@ -66,25 +100,62 @@ export default function NewsPage() {
         )}
         {projQ.data && projQ.data.games.length > 0 && (
           <div className="proj-grid">
-            {projQ.data.games.map((g) => {
-              const homeFav = g.impliedHomeWinProb > 0.5;
-              const favPct = (homeFav ? g.impliedHomeWinProb : 1 - g.impliedHomeWinProb) * 100;
-              return (
-                <div key={g.gameId} className="proj-card">
-                  <div className="proj-matchup mono">
-                    {g.awayTeamId} @ <strong>{g.homeTeamId}</strong>
-                  </div>
-                  <div className="proj-lean muted mono">
-                    lean: {homeFav ? g.homeTeamId : g.awayTeamId} ({favPct.toFixed(0)}%)
-                  </div>
-                  {(g.probableAwayPitcherId || g.probableHomePitcherId) && (
-                    <div className="muted" style={{ fontSize: '0.75rem' }}>
-                      {g.probableAwayPitcherId ?? 'TBD'} vs {g.probableHomePitcherId ?? 'TBD'}
+            {[...projQ.data.games]
+              .sort((a, b) => {
+                const aP = isPrimary(a) ? 2 : isSecondary(a) ? 1 : 0;
+                const bP = isPrimary(b) ? 2 : isSecondary(b) ? 1 : 0;
+                return bP - aP;
+              })
+              .map((g) => {
+                const homeFav = g.impliedHomeWinProb > 0.5;
+                const favPct = (homeFav ? g.impliedHomeWinProb : 1 - g.impliedHomeWinProb) * 100;
+                const p = isPrimary(g);
+                const s = !p && isSecondary(g);
+                return (
+                  <div
+                    key={g.gameId}
+                    className={`proj-card${p ? ' proj-card-primary' : s ? ' proj-card-secondary' : ''}`}
+                    style={
+                      p && primaryInfo
+                        ? {
+                            borderLeft: `3px solid ${primaryInfo.color}`,
+                            background: `linear-gradient(to right, ${primaryInfo.color}14, var(--bg-elev) 40%)`,
+                          }
+                        : s && secondaryInfo
+                          ? { borderLeft: `3px solid ${secondaryInfo.color}` }
+                          : undefined
+                    }
+                  >
+                    <div className="proj-matchup mono">
+                      {g.awayTeamId} @ <strong>{g.homeTeamId}</strong>
+                      {p && primaryInfo && (
+                        <span
+                          className="pill team-tag"
+                          style={{ marginLeft: '0.4rem', background: primaryInfo.color, color: '#fff' }}
+                        >
+                          {primaryTeam}
+                        </span>
+                      )}
+                      {s && secondaryInfo && (
+                        <span
+                          className="pill team-tag team-tag-secondary"
+                          style={{ marginLeft: '0.4rem', color: secondaryInfo.color }}
+                        >
+                          {secondaryTeam}
+                        </span>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    <div className="proj-lean muted mono">
+                      lean: {homeFav ? g.homeTeamId : g.awayTeamId} ({favPct.toFixed(0)}%)
+                    </div>
+                    {(g.probableAwayPitcherId || g.probableHomePitcherId) && (
+                      <div className="muted" style={{ fontSize: '0.75rem' }}>
+                        {g.probableAwayPitcherId ?? 'TBD'} vs {g.probableHomePitcherId ?? 'TBD'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         )}
       </div>
@@ -98,49 +169,79 @@ export default function NewsPage() {
       <div className="recap-list">
         {[...(recapsQ.data?.recaps ?? [])]
           .sort((a, b) => {
-            // Cubs always first.
-            const aCubs = isCubsGame(a) ? 1 : 0;
-            const bCubs = isCubsGame(b) ? 1 : 0;
-            if (aCubs !== bCubs) return bCubs - aCubs;
-            // Then by interest score desc.
+            const aP = isPrimary(a) ? 2 : isSecondary(a) ? 1 : 0;
+            const bP = isPrimary(b) ? 2 : isSecondary(b) ? 1 : 0;
+            if (aP !== bP) return bP - aP;
             return (b.interestScore ?? 0) - (a.interestScore ?? 0);
           })
           .map((r) => {
-            const cubs = isCubsGame(r);
-            const nlc = isNLCentralGame(r);
+            const p = isPrimary(r);
+            const s = !p && isSecondary(r);
+            const div = !p && !s && isPrimaryDivision(r);
             return (
-          <article
-            key={r.gameId}
-            className={`recap-card${cubs ? ' recap-card-cubs' : nlc ? ' recap-card-nlc' : ''}`}
-          >
-            <div className="recap-head">
-              <h2 className="recap-headline">{r.headline}</h2>
-              <div className="recap-tags">
-                {cubs && <span className="pill cubs-tag">CUBS</span>}
-                {!cubs && nlc && <span className="pill nlc-tag">NL CENTRAL</span>}
-                {r.gameType && r.gameType !== 'standard' && (
-                  <span className={`pill game-type game-type-${r.gameType}`}>
-                    {formatGameType(r.gameType)}
-                  </span>
-                )}
-                {r.upsetFlag && <span className="pill upset">UPSET</span>}
-              </div>
-            </div>
-            <p className="recap-body">
-              <span className="recap-dateline mono">{r.dateline}</span>
-              {r.summary}
-            </p>
-            <div className="recap-foot muted mono">
-              {r.awayTeamId} {r.awayScore} @ {r.homeTeamId} {r.homeScore} · winner{' '}
-              {r.winnerTeamId} · implied win prob{' '}
-              {(r.impliedWinProbOfWinner * 100).toFixed(0)}%
-              {r.interestScore !== undefined && (
-                <>
-                  {' '}· interest <strong>{r.interestScore}</strong>/10
-                </>
-              )}
-            </div>
-          </article>
+              <article
+                key={r.gameId}
+                className="recap-card"
+                style={
+                  p && primaryInfo
+                    ? {
+                        borderLeft: `3px solid ${primaryInfo.color}`,
+                        background: `linear-gradient(to right, ${primaryInfo.color}14, var(--bg-elev) 40%)`,
+                      }
+                    : s && secondaryInfo
+                      ? { borderLeft: `3px solid ${secondaryInfo.color}` }
+                      : div && primaryInfo
+                        ? { borderLeft: `3px solid ${primaryInfo.color}` }
+                        : undefined
+                }
+              >
+                <div className="recap-head">
+                  <h2 className="recap-headline">{r.headline}</h2>
+                  <div className="recap-tags">
+                    {p && primaryInfo && (
+                      <span
+                        className="pill team-tag"
+                        style={{ background: primaryInfo.color, color: '#fff' }}
+                      >
+                        {primaryTeam}
+                      </span>
+                    )}
+                    {s && secondaryInfo && (
+                      <span
+                        className="pill team-tag team-tag-secondary"
+                        style={{ color: secondaryInfo.color }}
+                      >
+                        {secondaryTeam}
+                      </span>
+                    )}
+                    {div && primaryDivisionName && (
+                      <span className="pill division-tag">
+                        {primaryDivisionName.toUpperCase()}
+                      </span>
+                    )}
+                    {r.gameType && r.gameType !== 'standard' && (
+                      <span className={`pill game-type game-type-${r.gameType}`}>
+                        {formatGameType(r.gameType)}
+                      </span>
+                    )}
+                    {r.upsetFlag && <span className="pill upset">UPSET</span>}
+                  </div>
+                </div>
+                <p className="recap-body">
+                  <span className="recap-dateline mono">{r.dateline}</span>
+                  {r.summary}
+                </p>
+                <div className="recap-foot muted mono">
+                  {r.awayTeamId} {r.awayScore} @ {r.homeTeamId} {r.homeScore} · winner{' '}
+                  {r.winnerTeamId} · implied win prob{' '}
+                  {(r.impliedWinProbOfWinner * 100).toFixed(0)}%
+                  {r.interestScore !== undefined && (
+                    <>
+                      {' '}· interest <strong>{r.interestScore}</strong>/10
+                    </>
+                  )}
+                </div>
+              </article>
             );
           })}
       </div>

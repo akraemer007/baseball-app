@@ -1,12 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiGet } from '../lib/api';
+import { usePreferences } from '../lib/preferences';
 import type { Division, LeagueResponse, TeamTrajectory } from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
 import { TeamSparkline } from '../charts/TeamSparkline';
-
-const DEFAULT_DIVISION = 'NL-CENTRAL';
 
 interface RankedTeam {
   teamId: string;
@@ -21,20 +20,15 @@ interface RankedTeam {
   rank: number;
 }
 
-/** Derive (wins, losses, w-l) from the latest trajectory point a team has. */
 function latestRecord(traj: TeamTrajectory | undefined): { wins: number; losses: number; wMinusL: number } {
   const last = traj?.points[traj.points.length - 1];
   if (!last) return { wins: 0, losses: 0, wMinusL: 0 };
-  // games = wins + losses; w-l known → wins=(gp+wmL)/2, losses=(gp-wmL)/2
   const wins = Math.round((last.gamesPlayed + last.wMinusL) / 2);
   const losses = last.gamesPlayed - wins;
   return { wins, losses, wMinusL: last.wMinusL };
 }
 
-function rankDivision(
-  division: Division,
-  trajectories: TeamTrajectory[],
-): RankedTeam[] {
+function rankDivision(division: Division, trajectories: TeamTrajectory[]): RankedTeam[] {
   const enriched = division.teams.map((t) => {
     const traj = trajectories.find((x) => x.teamId === t.id);
     const rec = latestRecord(traj);
@@ -69,8 +63,10 @@ function formatGB(gb: number, isLeader: boolean): string {
 
 export default function LeaguePage() {
   const season = new Date().getUTCFullYear();
-  const [selectedDivisionId, setSelectedDivisionId] = useState<string>(DEFAULT_DIVISION);
-  const [highlight, setHighlight] = useState<string | null>('CHC');
+  const { primaryTeam, secondaryTeam, setPrimaryTeam, setSecondaryTeam } = usePreferences();
+  const [selectedDivisionId, setSelectedDivisionId] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(primaryTeam);
+
   const { data, isLoading, error } = useQuery<LeagueResponse>({
     queryKey: ['league', season],
     queryFn: () => apiGet<LeagueResponse>(`/api/league/divisions?season=${season}`),
@@ -78,13 +74,39 @@ export default function LeaguePage() {
 
   const divisions = useMemo(() => data?.divisions ?? [], [data]);
   const trajectories = useMemo(() => data?.trajectory ?? [], [data]);
-  const selected = useMemo(
-    () => divisions.find((d) => d.id === selectedDivisionId) ?? divisions[0],
-    [divisions, selectedDivisionId],
+
+  // Division that contains the primary team — the default feature.
+  const primaryDivision = useMemo(
+    () =>
+      divisions.find((d) => d.teams.some((t) => t.id.toUpperCase() === primaryTeam.toUpperCase())),
+    [divisions, primaryTeam],
   );
 
-  // Shared X and Y scale across all standings-mini-charts so sparklines are
-  // directly comparable at a glance.
+  // When the primary team changes (or league data loads), snap the featured
+  // division to the primary team's division and reset the highlight.
+  useEffect(() => {
+    if (primaryDivision && !selectedDivisionId) {
+      setSelectedDivisionId(primaryDivision.id);
+    }
+    setHighlight(primaryTeam);
+  }, [primaryTeam, primaryDivision]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selected = useMemo(
+    () =>
+      divisions.find((d) => d.id === selectedDivisionId) ??
+      primaryDivision ??
+      divisions[0],
+    [divisions, selectedDivisionId, primaryDivision],
+  );
+
+  const primaryTeamData = useMemo(() => {
+    for (const d of divisions) {
+      const hit = d.teams.find((t) => t.id.toUpperCase() === primaryTeam.toUpperCase());
+      if (hit) return hit;
+    }
+    return null;
+  }, [divisions, primaryTeam]);
+
   const { maxGames, yBound } = useMemo(() => {
     let gp = 0;
     let yb = 1;
@@ -96,9 +118,55 @@ export default function LeaguePage() {
     return { maxGames: gp, yBound: yb };
   }, [trajectories]);
 
+  const allTeams = useMemo(() => divisions.flatMap((d) => d.teams), [divisions]);
+
   return (
     <div className="page">
-      <h1>Hello, Cubs fan</h1>
+      <div className="league-header">
+        <h1 style={{ margin: 0 }}>
+          Hello, <span style={{ color: primaryTeamData?.color }}>{primaryTeamData?.name ?? primaryTeam}</span> fan
+        </h1>
+        <div className="prefs-bar">
+          <label className="pref-field">
+            <span className="pref-label">My team</span>
+            <select
+              className="team-select pref-select"
+              value={primaryTeam}
+              onChange={(e) => setPrimaryTeam(e.target.value)}
+            >
+              {divisions.map((d) => (
+                <optgroup key={d.id} label={d.name}>
+                  {d.teams.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <label className="pref-field">
+            <span className="pref-label">Secondary</span>
+            <select
+              className="team-select pref-select"
+              value={secondaryTeam}
+              onChange={(e) => setSecondaryTeam(e.target.value)}
+            >
+              {divisions.map((d) => (
+                <optgroup key={d.id} label={d.name}>
+                  {d.teams
+                    .filter((t) => t.id.toUpperCase() !== primaryTeam.toUpperCase())
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
       <p className="muted">
         The view from every dugout, <span className="mono">{season}</span> season.
         Click a division to pull its full chart up top.
@@ -109,7 +177,6 @@ export default function LeaguePage() {
 
       {data && selected && (
         <>
-          {/* Featured division — full division chart */}
           <div className="card division-featured">
             <div className="division-header">
               <h2 style={{ margin: 0 }}>{selected.name}</h2>
@@ -120,7 +187,7 @@ export default function LeaguePage() {
                     to={`/team/${t.id}`}
                     className={`team-chip ${highlight === t.id ? 'active' : ''}`}
                     onMouseEnter={() => setHighlight(t.id)}
-                    onMouseLeave={() => setHighlight('CHC')}
+                    onMouseLeave={() => setHighlight(primaryTeam)}
                     style={{ borderColor: t.color }}
                   >
                     <span className="team-chip-dot" style={{ background: t.color }} />
@@ -137,7 +204,6 @@ export default function LeaguePage() {
             />
           </div>
 
-          {/* Standings — 3x2 grid, Statcast-style ranked list per division */}
           <h2 style={{ marginTop: '1.25rem', marginBottom: '0.5rem' }}>League standings</h2>
           <div className="grid grid-3 standings-grid">
             {divisions.map((div) => {
@@ -186,6 +252,8 @@ export default function LeaguePage() {
           </div>
         </>
       )}
+      {/* Keep allTeams reference alive so a future "favorite a player" picker can reuse it. */}
+      {allTeams.length === 0 && null}
     </div>
   );
 }
