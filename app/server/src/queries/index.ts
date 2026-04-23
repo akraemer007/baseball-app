@@ -223,7 +223,7 @@ export async function getTeamFromWarehouse(
   }
   const teamId = summary.team_id;
 
-  const [percentiles, recent, upcoming, leaderRow] = await Promise.all([
+  const [percentiles, recent, upcoming, leaderRow, runDiffRow] = await Promise.all([
     query<TeamPercentileRow>(
       `SELECT stat_name, team_value, league_mean, league_stddev, z_score, rank_in_league
          FROM gold_team_stat_vs_league
@@ -278,6 +278,19 @@ export async function getTeamFromWarehouse(
        ORDER BY (gt.cum_wins - gt.cum_losses) DESC
        LIMIT 1`
     ),
+    // Run differential = runs scored minus runs allowed, over all finals this season.
+    query<{ runs_for: number; runs_against: number }>(
+      `SELECT SUM(tg.runs) AS runs_for,
+              SUM(opp.runs) AS runs_against
+         FROM silver_team_game tg
+         JOIN silver_team_game opp
+           ON opp.game_pk = tg.game_pk AND opp.team_id != tg.team_id
+         JOIN silver_game g ON g.game_pk = tg.game_pk
+        WHERE g.season = ${season}
+          AND g.status = 'Final'
+          AND g.game_type = 'R'
+          AND tg.team_id = ${teamId}`
+    ),
   ]);
 
   // Compute streak from the most-recent games
@@ -319,7 +332,9 @@ export async function getTeamFromWarehouse(
       wins: summary.cum_wins,
       losses: summary.cum_losses,
       winPct: Number(winPct.toFixed(3)),
-      runDiff: 0, // TODO: wire in from gold_team_stat_vs_league runs totals
+      runDiff: runDiffRow[0]
+        ? Math.round((runDiffRow[0].runs_for ?? 0) - (runDiffRow[0].runs_against ?? 0))
+        : 0,
       gamesBehind,
     },
     streak: { type: streakType, length: streakLength },
