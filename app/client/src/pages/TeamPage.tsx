@@ -170,7 +170,18 @@ export default function TeamPage() {
                                 : 'rgba(231, 76, 60, 0.8)',
                         }}
                       />
-                      <div className="percentile-median" />
+                      <div
+                        className="percentile-median"
+                        tabIndex={0}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        {s.leagueMean !== undefined && (
+                          <span className="percentile-median-tip" role="tooltip">
+                            League avg {s.leagueMean}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="percentile-foot muted mono">
                       {s.leagueRankPercentile}th pctl

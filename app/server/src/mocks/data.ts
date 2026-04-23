@@ -173,6 +173,7 @@ export function getTeam(teamId: string, season: number): TeamResponse {
     value: Number((80 + rand() * 40).toFixed(1)),
     leagueRankPercentile: Math.floor(rand() * 100),
     category,
+    leagueMean: 100, // All "plus" stats are indexed so 100 == league average.
   }));
 
   const recentGames = Array.from({ length: 10 }).map((_, i) => {

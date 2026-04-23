@@ -405,6 +405,7 @@ export async function getTeamFromWarehouse(
       // Lower rank = better. Convert rank 1-of-30 → 97th percentile.
       leagueRankPercentile: Math.round(((30 - p.rank_in_league + 1) / 30) * 100),
       category: STAT_CATEGORIES[p.stat_name] ?? 'batting',
+      leagueMean: formatStatValue(p.stat_name, p.league_mean),
     })),
     recentGames: recent.map((g) => ({
       gameId: String(g.game_pk),

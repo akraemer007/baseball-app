@@ -611,7 +611,7 @@ table.stat-table td.num {
   height: 8px;
   background: rgba(30, 51, 84, 0.1);
   border-radius: 2px;
-  overflow: hidden;
+  /* overflow visible so the median-tick tooltip can escape the 8px strip */
 }
 
 .percentile-bar {
@@ -622,11 +622,48 @@ table.stat-table td.num {
 
 .percentile-median {
   position: absolute;
-  top: -2px;
-  bottom: -2px;
+  top: -4px;
+  bottom: -4px;
   left: 50%;
   width: 1px;
-  background: rgba(10, 22, 40, 0.35);
+  background: rgba(10, 22, 40, 0.45);
+  outline: none;
+  cursor: help;
+  /* Expand the hit target left/right without widening the visible tick */
+  padding: 0 5px;
+  margin-left: -5px;
+  background-clip: content-box;
+}
+
+.percentile-median:hover,
+.percentile-median:focus {
+  background-color: rgba(10, 22, 40, 0.7);
+}
+
+.percentile-median-tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0a1628;
+  color: #e8eef7;
+  border-radius: 3px;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.7rem;
+  font-family: var(--mono);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease-out, visibility 120ms;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  z-index: 5;
+}
+
+.percentile-median:hover .percentile-median-tip,
+.percentile-median:focus .percentile-median-tip {
+  opacity: 1;
+  visibility: visible;
 }
 
 .percentile-foot {
