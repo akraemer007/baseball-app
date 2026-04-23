@@ -237,6 +237,88 @@ table.stat-table td.num {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
+/* Standings mini-tables (Statcast-style per-team breakout) */
+.standings-grid {
+  gap: 0.75rem;
+}
+
+.standings-card {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-elev);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem 0.9rem 0.6rem;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+
+.standings-card:hover {
+  border-color: rgba(245, 208, 111, 0.55);
+}
+
+.standings-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.standings-head {
+  margin: 0 0 0.4rem 0;
+  font-size: 0.85rem;
+}
+
+.standings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.standings-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.standings-spark {
+  width: 90px;
+  height: 24px;
+}
+
+.standings-team {
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.85rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.standings-team:hover {
+  text-decoration: none;
+}
+
+.standings-team:hover .standings-rank,
+.standings-team:hover .standings-gb {
+  color: var(--accent);
+}
+
+.standings-rank {
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.standings-gb {
+  font-size: 0.72rem;
+}
+
 /* Team page header: team name + team picker side-by-side */
 .team-header-row {
   display: flex;
