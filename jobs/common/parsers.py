@@ -103,6 +103,40 @@ def parse_schedule_payloads(payloads: Iterable[dict]) -> list[dict]:
 # --- Boxscore ---------------------------------------------------------------
 
 
+def parse_linescore_from_schedule(payloads: Iterable[dict]) -> list[dict]:
+    """One row per (game_pk, inning) across all schedule payloads.
+
+    Schedule responses hydrated with `linescore` embed the per-inning line
+    at `dates[].games[].linescore.innings[]`. Each inning has an integer
+    `num` plus `home` / `away` objects with `runs`. We only emit rows for
+    games in Final status and innings that actually have a `num` — in-
+    progress games can have partial innings with null runs.
+    """
+    out: dict[tuple[int, int], dict] = {}
+    for payload in payloads:
+        for date_entry in payload.get("dates", []):
+            for g in date_entry.get("games", []):
+                status = g.get("status", {}).get("abstractGameState")
+                if status != "Final":
+                    continue
+                game_pk = int(g["gamePk"])
+                linescore = g.get("linescore") or {}
+                innings = linescore.get("innings") or []
+                for inn in innings:
+                    num = inn.get("num")
+                    if num is None:
+                        continue
+                    home = inn.get("home") or {}
+                    away = inn.get("away") or {}
+                    out[(game_pk, int(num))] = {
+                        "game_pk": game_pk,
+                        "inning": int(num),
+                        "home_runs": safe_int(home.get("runs")),
+                        "away_runs": safe_int(away.get("runs")),
+                    }
+    return list(out.values())
+
+
 def parse_boxscore(payload: dict, game_pk: int, game_date: str) -> tuple[list[dict], list[dict], list[dict]]:
     """Return (team_game_rows, batting_rows, pitching_rows)."""
     teams = payload.get("teams", {})

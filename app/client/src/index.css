@@ -767,3 +767,20 @@ table.stat-table td.num {
   text-transform: uppercase;
   margin-top: 0.5rem;
 }
+
+.recap-tags {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: baseline;
+}
+
+.pill.game-type {
+  font-weight: 600;
+  background: rgba(10, 22, 40, 0.08);
+  color: var(--text);
+}
+
+.pill.game-type-walkoff { background: #fde7ea; color: #8b1e32; }
+.pill.game-type-comeback { background: #fff3d6; color: #8a5a00; }
+.pill.game-type-pitching_duel { background: #e0eaff; color: #1d3a8a; }
+.pill.game-type-blowout { background: #ebebeb; color: #4a4a4a; }

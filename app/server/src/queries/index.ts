@@ -6,10 +6,12 @@
 //       Import and call from routes/ when ready.
 
 import type {
+  GameType,
   HrRaceResponse,
   LeagueResponse,
   PlayerResponse,
   ProjectionsResponse,
+  RecapItem,
   RecapsResponse,
   StatDistributionResponse,
   TeamResponse,
@@ -595,43 +597,84 @@ interface RecapRow {
   summary: string;
   upset_flag: boolean;
   winner_implied_win_prob: number | null;
+  game_type: string | null;
+  interest_score: number | null;
+  recap_length: string | null;
+  narrative_spine: string | null;
 }
+
+function rowToRecap(r: RecapRow): RecapItem {
+  return {
+    gameId: String(r.game_pk),
+    date: r.game_date,
+    homeTeamId: r.home_abbrev,
+    awayTeamId: r.away_abbrev,
+    homeScore: r.home_score,
+    awayScore: r.away_score,
+    winnerTeamId: r.winner_abbrev ?? r.home_abbrev,
+    impliedWinProbOfWinner: r.winner_implied_win_prob ?? 0.5,
+    upsetFlag: !!r.upset_flag,
+    headline: r.headline,
+    dateline: r.dateline,
+    summary: r.summary,
+    blurb: `${r.dateline}${r.summary}`,
+    gameType: (r.game_type as GameType | null) ?? undefined,
+    interestScore: r.interest_score ?? undefined,
+    recapLength: (r.recap_length as 'short' | 'medium' | 'long' | null) ?? undefined,
+    narrativeSpine: r.narrative_spine ?? undefined,
+  };
+}
+
+const RECAP_SELECT = `
+  SELECT g.game_pk, g.game_date,
+         g.home_team_id, h.abbrev AS home_abbrev,
+         g.away_team_id, a.abbrev AS away_abbrev,
+         g.home_score, g.away_score, g.winner_team_id,
+         w.abbrev AS winner_abbrev,
+         r.headline, r.dateline, r.summary,
+         r.upset_flag, r.winner_implied_win_prob,
+         r.game_type, r.interest_score, r.recap_length, r.narrative_spine
+    FROM gold_game_recap r
+    JOIN silver_game g USING (game_pk)
+    JOIN silver_team h ON h.team_id = g.home_team_id
+    JOIN silver_team a ON a.team_id = g.away_team_id
+    LEFT JOIN silver_team w ON w.team_id = g.winner_team_id
+`;
 
 export async function getRecapsFromWarehouse(date: string): Promise<RecapsResponse> {
   const safeDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : new Date().toISOString().slice(0, 10);
   const rows = await query<RecapRow>(
-    `SELECT g.game_pk, g.game_date,
-            g.home_team_id, h.abbrev AS home_abbrev,
-            g.away_team_id, a.abbrev AS away_abbrev,
-            g.home_score, g.away_score, g.winner_team_id,
-            w.abbrev AS winner_abbrev,
-            r.headline, r.dateline, r.summary,
-            r.upset_flag, r.winner_implied_win_prob
-       FROM gold_game_recap r
-       JOIN silver_game g USING (game_pk)
-       JOIN silver_team h ON h.team_id = g.home_team_id
-       JOIN silver_team a ON a.team_id = g.away_team_id
-       LEFT JOIN silver_team w ON w.team_id = g.winner_team_id
-      WHERE g.game_date = '${safeDate}'
-      ORDER BY g.game_pk`
+    `${RECAP_SELECT}
+     WHERE g.game_date = '${safeDate}'
+     ORDER BY coalesce(r.interest_score, 0) DESC, g.game_pk`,
   );
+  return { date: safeDate, recaps: rows.map(rowToRecap) };
+}
+
+/** Multi-day recap fetch: returns the most-recent N calendar dates that
+ *  have any recap rows. Within each date, games are sorted by interest_score
+ *  desc so the upsets and walk-offs surface first. */
+export async function getRecapsDaysFromWarehouse(days: number): Promise<RecapsResponse> {
+  const n = Math.max(1, Math.min(30, Math.floor(days)));
+  const rows = await query<RecapRow>(
+    `${RECAP_SELECT}
+     WHERE g.game_date IN (
+       SELECT DISTINCT game_date
+         FROM gold_game_recap
+        ORDER BY game_date DESC
+        LIMIT ${n}
+     )
+     ORDER BY g.game_date DESC, coalesce(r.interest_score, 0) DESC, g.game_pk`,
+  );
+  const allRecaps = rows.map(rowToRecap);
+  const byDate = new Map<string, RecapItem[]>();
+  for (const r of allRecaps) {
+    if (!byDate.has(r.date)) byDate.set(r.date, []);
+    byDate.get(r.date)!.push(r);
+  }
   return {
-    date: safeDate,
-    recaps: rows.map((r) => ({
-      gameId: String(r.game_pk),
-      date: r.game_date,
-      homeTeamId: r.home_abbrev,
-      awayTeamId: r.away_abbrev,
-      homeScore: r.home_score,
-      awayScore: r.away_score,
-      winnerTeamId: r.winner_abbrev ?? r.home_abbrev,
-      impliedWinProbOfWinner: r.winner_implied_win_prob ?? 0.5,
-      upsetFlag: !!r.upset_flag,
-      headline: r.headline,
-      dateline: r.dateline,
-      summary: r.summary,
-      blurb: `${r.dateline}${r.summary}`,
-    })),
+    recaps: allRecaps,
+    days: Array.from(byDate.entries()).map(([date, recaps]) => ({ date, recaps })),
   };
 }
 

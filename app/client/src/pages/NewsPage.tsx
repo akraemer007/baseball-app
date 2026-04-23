@@ -3,6 +3,16 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
 import type { ProjectionsResponse, RecapsResponse } from '@shared/types';
 
+function formatGameType(t: string): string {
+  switch (t) {
+    case 'walkoff': return 'WALK-OFF';
+    case 'comeback': return 'COMEBACK';
+    case 'pitching_duel': return 'PITCHING DUEL';
+    case 'blowout': return 'BLOWOUT';
+    default: return t.toUpperCase();
+  }
+}
+
 function yesterdayIso(): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - 1);
@@ -78,7 +88,14 @@ export default function NewsPage() {
           <article key={r.gameId} className="recap-card">
             <div className="recap-head">
               <h2 className="recap-headline">{r.headline}</h2>
-              {r.upsetFlag && <span className="pill upset">UPSET</span>}
+              <div className="recap-tags">
+                {r.gameType && r.gameType !== 'standard' && (
+                  <span className={`pill game-type game-type-${r.gameType}`}>
+                    {formatGameType(r.gameType)}
+                  </span>
+                )}
+                {r.upsetFlag && <span className="pill upset">UPSET</span>}
+              </div>
             </div>
             <p className="recap-body">
               <span className="recap-dateline mono">{r.dateline}</span>
@@ -88,6 +105,11 @@ export default function NewsPage() {
               {r.awayTeamId} {r.awayScore} @ {r.homeTeamId} {r.homeScore} · winner{' '}
               {r.winnerTeamId} · implied win prob{' '}
               {(r.impliedWinProbOfWinner * 100).toFixed(0)}%
+              {r.interestScore !== undefined && (
+                <>
+                  {' '}· interest <strong>{r.interestScore}</strong>/10
+                </>
+              )}
             </div>
           </article>
         ))}
