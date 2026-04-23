@@ -195,13 +195,46 @@ table.stat-table td.num {
   text-align: right;
 }
 
-/* Division trajectory grid */
+/* Division trajectory — featured (large) chart on top */
+.division-featured {
+  padding: 1rem 1.25rem 0.5rem;
+}
+
+.division-header-compact h3 {
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+/* Division trajectory grid (6 small) */
 .division-grid {
   gap: 0.75rem;
 }
 
 .division-card {
   padding: 0.75rem 0.85rem 0.5rem;
+}
+
+/* When a small card is rendered as a button, strip button styling
+   and add an active-border state for the currently featured division. */
+.division-card-button {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-elev);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.division-card-button:hover {
+  border-color: rgba(245, 208, 111, 0.55);
+}
+
+.division-card-button.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .division-header {
