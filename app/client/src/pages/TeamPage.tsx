@@ -7,6 +7,12 @@ import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
 import { StatDistributionChart } from '../charts/StatDistributionChart';
 import { InfoTip } from '../components/InfoTip';
 
+const CATEGORY_LABELS: Record<'batting' | 'pitching' | 'fielding', string> = {
+  batting: 'Batting — percentile vs. league',
+  pitching: 'Pitching — percentile vs. league',
+  fielding: 'Fielding — percentile vs. league',
+};
+
 const STAT_DEFINITIONS: Record<string, string> = {
   avg: 'Batting average. Hits ÷ at-bats. League average is usually around .245.',
   obp: 'On-base percentage. (Hits + walks) ÷ (at-bats + walks). Measures how often a hitter reaches base.',
@@ -130,71 +136,77 @@ export default function TeamPage() {
         </div>
       )}
 
-      <div className="card">
-        <h3>Percentile vs. league</h3>
-        <div className="percentile-list percentile-list-wide">
-            {percentileStats.map((s) => {
-              const isOpen = expandedStat === s.statKey;
-              return (
-              <div
-                key={s.statKey}
-                className="percentile-row percentile-row-expandable"
-                data-open={isOpen}
-                role="button"
-                tabIndex={0}
-                onClick={() => setExpandedStat(isOpen ? null : s.statKey)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setExpandedStat(isOpen ? null : s.statKey);
-                  }
-                }}
-              >
-                <div className="percentile-label">
-                  <span>
-                    {s.label}
-                    {STAT_DEFINITIONS[s.statKey] && (
-                      <InfoTip>{STAT_DEFINITIONS[s.statKey]}</InfoTip>
-                    )}
-                    <span className="percentile-row-chevron">▸</span>
-                  </span>
-                  <span className="muted mono">{s.value}</span>
-                </div>
-                <div className="percentile-bar-wrap">
+      {(['batting', 'pitching', 'fielding'] as const).map((cat) => {
+        const rows = percentileStats.filter((s) => s.category === cat);
+        if (!rows.length) return null;
+        return (
+          <div key={cat} className="card">
+            <h3>{CATEGORY_LABELS[cat]}</h3>
+            <div className="percentile-list percentile-list-wide">
+              {rows.map((s) => {
+                const isOpen = expandedStat === s.statKey;
+                return (
                   <div
-                    className="percentile-bar"
-                    style={{
-                      width: `${s.leagueRankPercentile}%`,
-                      background:
-                        s.leagueRankPercentile >= 66
-                          ? team.color
-                          : s.leagueRankPercentile >= 33
-                            ? 'rgba(143, 163, 192, 0.65)'
-                            : 'rgba(231, 76, 60, 0.8)',
+                    key={s.statKey}
+                    className="percentile-row percentile-row-expandable"
+                    data-open={isOpen}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setExpandedStat(isOpen ? null : s.statKey)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setExpandedStat(isOpen ? null : s.statKey);
+                      }
                     }}
-                  />
-                  <div className="percentile-median" />
-                </div>
-                <div className="percentile-foot muted mono">
-                  {s.leagueRankPercentile}th pctl · {s.category}
-                </div>
-                {isOpen && (
-                  <div
-                    className="stat-dist-container"
-                    onClick={(e) => e.stopPropagation()}
                   >
-                    <StatDistRow
-                      statKey={s.statKey}
-                      season={season}
-                      currentTeamAbbrev={team.id}
-                    />
+                    <div className="percentile-label">
+                      <span>
+                        {s.label}
+                        {STAT_DEFINITIONS[s.statKey] && (
+                          <InfoTip>{STAT_DEFINITIONS[s.statKey]}</InfoTip>
+                        )}
+                        <span className="percentile-row-chevron">▸</span>
+                      </span>
+                      <span className="muted mono">{s.value}</span>
+                    </div>
+                    <div className="percentile-bar-wrap">
+                      <div
+                        className="percentile-bar"
+                        style={{
+                          width: `${s.leagueRankPercentile}%`,
+                          background:
+                            s.leagueRankPercentile >= 66
+                              ? team.color
+                              : s.leagueRankPercentile >= 33
+                                ? 'rgba(143, 163, 192, 0.65)'
+                                : 'rgba(231, 76, 60, 0.8)',
+                        }}
+                      />
+                      <div className="percentile-median" />
+                    </div>
+                    <div className="percentile-foot muted mono">
+                      {s.leagueRankPercentile}th pctl
+                    </div>
+                    {isOpen && (
+                      <div
+                        className="stat-dist-container"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <StatDistRow
+                          statKey={s.statKey}
+                          season={season}
+                          currentTeamAbbrev={team.id}
+                        />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              );
-            })}
-        </div>
-      </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
 
       <div className="grid grid-2">
         <div className="card">

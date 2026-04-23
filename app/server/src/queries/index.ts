@@ -37,6 +37,22 @@ export const STAT_LABELS: Record<string, string> = {
 /** Stats where a lower value is better. */
 const LOWER_IS_BETTER = new Set(['era', 'era_minus', 'fip', 'errors_per_game']);
 
+/** Which card each stat belongs to on the Team page. */
+const STAT_CATEGORIES: Record<string, 'batting' | 'pitching' | 'fielding'> = {
+  avg: 'batting',
+  obp: 'batting',
+  slg: 'batting',
+  ops: 'batting',
+  ops_plus: 'batting',
+  runs_per_game: 'batting',
+  hr_per_game: 'batting',
+  era: 'pitching',
+  era_minus: 'pitching',
+  fip: 'pitching',
+  k_per_9: 'pitching',
+  errors_per_game: 'fielding',
+};
+
 /** Per-stat value formatting — keeps 3 decimals for slash-line stats, 2 for others. */
 function formatStatValue(stat: string, raw: number | null | undefined): number {
   if (raw == null) return 0;
@@ -388,7 +404,7 @@ export async function getTeamFromWarehouse(
       value: formatStatValue(p.stat_name, p.team_value),
       // Lower rank = better. Convert rank 1-of-30 → 97th percentile.
       leagueRankPercentile: Math.round(((30 - p.rank_in_league + 1) / 30) * 100),
-      category: /era|fip|k_per_9|errors/.test(p.stat_name) ? 'pitching' : 'batting',
+      category: STAT_CATEGORIES[p.stat_name] ?? 'batting',
     })),
     recentGames: recent.map((g) => ({
       gameId: String(g.game_pk),
