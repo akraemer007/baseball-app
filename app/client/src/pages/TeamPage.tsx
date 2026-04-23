@@ -3,6 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { apiGet } from '../lib/api';
 import { usePreferences } from '../lib/preferences';
+import {
+  savantPlayerUrl,
+  savantBoxScoreUrl,
+  savantPreviewUrl,
+} from '../lib/savant';
 import type { LeagueResponse, StatDistributionResponse, TeamResponse } from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
 import { StatDistributionChart } from '../charts/StatDistributionChart';
@@ -270,7 +275,7 @@ export default function TeamPage() {
                     <td className="mono col-shrink">
                       <a
                         className="team-matchup-link"
-                        href={`https://baseballsavant.mlb.com/gamefeed?gamePk=${g.gameId}&hf=boxScore`}
+                        href={savantBoxScoreUrl(g.gameId)}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
@@ -296,7 +301,19 @@ export default function TeamPage() {
                       {g.awayScore}-{g.homeScore}
                     </td>
                     <td className="top-performer muted">
-                      {g.topPerformer ?? ''}
+                      {g.topPerformer && (
+                        <>
+                          <a
+                            className="team-matchup-link"
+                            href={savantPlayerUrl(g.topPerformer.playerId)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {g.topPerformer.playerName}
+                          </a>{' '}
+                          {g.topPerformer.statLine}
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
@@ -327,7 +344,7 @@ export default function TeamPage() {
                     <td className="mono col-shrink">
                       <a
                         className="team-matchup-link"
-                        href={`https://baseballsavant.mlb.com/preview?game_pk=${g.gameId}&game_date=${g.date}&date=${g.date}`}
+                        href={savantPreviewUrl(g.gameId, g.date)}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
@@ -339,9 +356,17 @@ export default function TeamPage() {
                         <TeamLink abbrev={g.awayTeamId} currentId={team.id} /> @{' '}
                         <TeamLink abbrev={g.homeTeamId} currentId={team.id} />
                       </div>
-                      {(g.probableAwayPitcherId || g.probableHomePitcherId) && (
+                      {(g.probableAwayPitcherName || g.probableHomePitcherName) && (
                         <div className="muted" style={{ fontSize: '0.75rem', marginTop: '0.1rem' }}>
-                          {g.probableAwayPitcherId ?? 'TBD'} vs {g.probableHomePitcherId ?? 'TBD'}
+                          <PitcherLink
+                            name={g.probableAwayPitcherName}
+                            mlbamId={g.probableAwayPitcherId}
+                          />{' '}
+                          vs{' '}
+                          <PitcherLink
+                            name={g.probableHomePitcherName}
+                            mlbamId={g.probableHomePitcherId}
+                          />
                         </div>
                       )}
                     </td>
@@ -402,6 +427,27 @@ function formatGB(gb: number): string {
   const whole = Math.floor(gb);
   const half = gb - whole >= 0.5 ? '½' : '';
   return `${whole}${half}`;
+}
+
+function PitcherLink({
+  name,
+  mlbamId,
+}: {
+  name: string | null;
+  mlbamId: string | null;
+}) {
+  if (!name) return <>TBD</>;
+  if (!mlbamId) return <>{name}</>;
+  return (
+    <a
+      className="team-matchup-link"
+      href={savantPlayerUrl(mlbamId)}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {name}
+    </a>
+  );
 }
 
 function TeamLink({ abbrev, currentId }: { abbrev: string; currentId: string }) {

@@ -278,6 +278,7 @@ interface RecentGameRow {
 interface TopPerformerRow {
   game_pk: number;
   kind: 'batter' | 'pitcher';
+  player_id: number;
   player_name: string;
   // Batter fields (null for pitcher rows)
   at_bats: number | null;
@@ -301,26 +302,32 @@ function formatIP(ip: number): string {
   return rem === 0 ? `${whole}` : `${whole}.${rem}`;
 }
 
-/** Build a short newspaper-box-score style line for the row's performer. */
-function formatTopPerformer(row: TopPerformerRow): string {
+/** Build {playerName, statLine} for the row's performer. Name is rendered
+ *  separately so the client can wrap it in a Savant profile link. */
+function formatTopPerformer(row: TopPerformerRow): {
+  playerId: string;
+  playerName: string;
+  statLine: string;
+} {
   // Just the last name for terseness — "Suzuki" beats "S. Suzuki" in a table cell.
   const parts = row.player_name.trim().split(/\s+/);
   const last = parts.length > 1 ? parts.slice(1).join(' ') : parts[0];
+  let statLine: string;
   if (row.kind === 'batter') {
     const bits: string[] = [`${row.hits ?? 0}-${row.at_bats ?? 0}`];
     if ((row.home_runs ?? 0) > 0) {
       bits.push(row.home_runs === 1 ? 'HR' : `${row.home_runs} HR`);
     }
     if ((row.rbi ?? 0) > 0) bits.push(`${row.rbi} RBI`);
-    return `${last} ${bits.join(', ')}`;
+    statLine = bits.join(', ');
+  } else {
+    statLine = [
+      `${formatIP(row.innings_pitched ?? 0)} IP`,
+      `${row.strikeouts ?? 0} K`,
+      `${row.earned_runs ?? 0} ER`,
+    ].join(', ');
   }
-  // pitcher
-  const bits = [
-    `${formatIP(row.innings_pitched ?? 0)} IP`,
-    `${row.strikeouts ?? 0} K`,
-    `${row.earned_runs ?? 0} ER`,
-  ];
-  return `${last} ${bits.join(', ')}`;
+  return { playerId: String(row.player_id), playerName: last, statLine };
 }
 
 interface UpcomingGameRow {
@@ -445,7 +452,7 @@ export async function getTeamFromWarehouse(
           LIMIT 10
        ),
        batters AS (
-         SELECT b.game_pk, b.player_name,
+         SELECT b.game_pk, b.player_id, b.player_name,
                 b.at_bats, b.hits, b.home_runs, b.rbi,
                 (b.hits + b.home_runs * 3.0 + b.rbi * 1.5
                  + b.walks * 0.5 + b.runs * 0.5) AS score
@@ -454,12 +461,12 @@ export async function getTeamFromWarehouse(
           WHERE b.team_id = ${teamId}
        ),
        best_batter AS (
-         SELECT game_pk, player_name, at_bats, hits, home_runs, rbi, score,
+         SELECT game_pk, player_id, player_name, at_bats, hits, home_runs, rbi, score,
                 ROW_NUMBER() OVER (PARTITION BY game_pk ORDER BY score DESC) AS rn
            FROM batters
        ),
        pitchers AS (
-         SELECT p.game_pk, p.player_name,
+         SELECT p.game_pk, p.player_id, p.player_name,
                 p.innings_pitched, p.earned_runs, p.strikeouts, p.wins
            FROM silver_player_game_pitching p
            JOIN recent r USING (game_pk)
@@ -477,6 +484,7 @@ export async function getTeamFromWarehouse(
        SELECT
          COALESCE(bp.game_pk, bb.game_pk) AS game_pk,
          CASE WHEN bp.game_pk IS NOT NULL THEN 'pitcher' ELSE 'batter' END AS kind,
+         COALESCE(bp.player_id, bb.player_id) AS player_id,
          COALESCE(bp.player_name, bb.player_name) AS player_name,
          bb.at_bats, bb.hits, bb.home_runs, bb.rbi,
          bp.innings_pitched, bp.earned_runs, bp.strikeouts, bp.wins
@@ -565,14 +573,14 @@ export async function getTeamFromWarehouse(
       date: g.game_date,
       homeTeamId: g.home_abbrev,
       awayTeamId: g.away_abbrev,
-      // Prefer the joined name, fall back to the id so "TBD" stays empty
-      // but the UI still has something actionable.
-      probableHomePitcherId:
-        g.home_probable_pitcher_name ??
-        (g.home_probable_pitcher_id ? String(g.home_probable_pitcher_id) : null),
-      probableAwayPitcherId:
-        g.away_probable_pitcher_name ??
-        (g.away_probable_pitcher_id ? String(g.away_probable_pitcher_id) : null),
+      probableHomePitcherId: g.home_probable_pitcher_id
+        ? String(g.home_probable_pitcher_id)
+        : null,
+      probableAwayPitcherId: g.away_probable_pitcher_id
+        ? String(g.away_probable_pitcher_id)
+        : null,
+      probableHomePitcherName: g.home_probable_pitcher_name,
+      probableAwayPitcherName: g.away_probable_pitcher_name,
       impliedHomeWinProb: g.home_win_prob ?? 0.5,
     })),
   };
@@ -839,12 +847,14 @@ export async function getProjectionsFromWarehouse(): Promise<ProjectionsResponse
       date: g.game_date,
       homeTeamId: g.home_abbrev,
       awayTeamId: g.away_abbrev,
-      probableHomePitcherId:
-        g.home_probable_pitcher_name ??
-        (g.home_probable_pitcher_id ? String(g.home_probable_pitcher_id) : null),
-      probableAwayPitcherId:
-        g.away_probable_pitcher_name ??
-        (g.away_probable_pitcher_id ? String(g.away_probable_pitcher_id) : null),
+      probableHomePitcherId: g.home_probable_pitcher_id
+        ? String(g.home_probable_pitcher_id)
+        : null,
+      probableAwayPitcherId: g.away_probable_pitcher_id
+        ? String(g.away_probable_pitcher_id)
+        : null,
+      probableHomePitcherName: g.home_probable_pitcher_name,
+      probableAwayPitcherName: g.away_probable_pitcher_name,
       impliedHomeWinProb: g.home_win_prob ?? 0.5,
     })),
   };

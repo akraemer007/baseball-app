@@ -67,9 +67,13 @@ export interface GameSummary {
   awayScore: number | null;
   isFinal: boolean;
   winnerTeamId: string | null;
-  /** Our team's top performer that game: short line like
-   *  "Suzuki 3-4, HR, 3 RBI" or "Assad 7 IP, 10 K, 1 ER". */
-  topPerformer?: string;
+  /** Our team's top performer that game. Rendered as "<lastName> <statLine>";
+   *  the client links the name to a Savant player page using playerId. */
+  topPerformer?: {
+    playerId: string;
+    playerName: string;
+    statLine: string;
+  };
 }
 
 export interface ScheduledGame {
@@ -77,8 +81,13 @@ export interface ScheduledGame {
   date: string;
   homeTeamId: string;
   awayTeamId: string;
+  /** MLBAM player id for the probable starter — for linking to Savant. */
   probableHomePitcherId: string | null;
   probableAwayPitcherId: string | null;
+  /** Display name, joined from silver_player_season. Falls back to null
+   *  when the game doesn't have a confirmed probable yet. */
+  probableHomePitcherName: string | null;
+  probableAwayPitcherName: string | null;
   impliedHomeWinProb: number; // 0-1
 }
 

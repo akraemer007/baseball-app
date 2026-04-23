@@ -231,6 +231,22 @@ table.stat-table td.top-performer {
   font-size: 0.8rem;
 }
 
+/* Savant-link variants — inherit their parent's color so the visual
+   tone stays intact; underline only on hover. */
+.recap-headline-link,
+.proj-matchup-link,
+.pitcher-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.recap-headline-link:hover,
+.proj-matchup-link:hover,
+.pitcher-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 /* Division trajectory — featured (large) chart on top */
 .division-featured {
   padding: 1rem 1.25rem 0.5rem;

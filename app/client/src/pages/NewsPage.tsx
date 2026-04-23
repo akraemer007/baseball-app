@@ -2,6 +2,11 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
 import { usePreferences } from '../lib/preferences';
+import {
+  savantBoxScoreUrl,
+  savantPlayerUrl,
+  savantPreviewUrl,
+} from '../lib/savant';
 import type { LeagueResponse, ProjectionsResponse, RecapsResponse } from '@shared/types';
 
 function formatGameType(t: string): string {
@@ -127,7 +132,14 @@ export default function NewsPage() {
                     }
                   >
                     <div className="proj-matchup mono">
-                      {g.awayTeamId} @ <strong>{g.homeTeamId}</strong>
+                      <a
+                        className="proj-matchup-link"
+                        href={savantPreviewUrl(g.gameId, g.date)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {g.awayTeamId} @ <strong>{g.homeTeamId}</strong>
+                      </a>
                       {p && primaryInfo && (
                         <span
                           className="pill team-tag"
@@ -148,9 +160,17 @@ export default function NewsPage() {
                     <div className="proj-lean muted mono">
                       lean: {homeFav ? g.homeTeamId : g.awayTeamId} ({favPct.toFixed(0)}%)
                     </div>
-                    {(g.probableAwayPitcherId || g.probableHomePitcherId) && (
+                    {(g.probableAwayPitcherName || g.probableHomePitcherName) && (
                       <div className="muted" style={{ fontSize: '0.75rem' }}>
-                        {g.probableAwayPitcherId ?? 'TBD'} vs {g.probableHomePitcherId ?? 'TBD'}
+                        <NameLink
+                          name={g.probableAwayPitcherName}
+                          mlbamId={g.probableAwayPitcherId}
+                        />{' '}
+                        vs{' '}
+                        <NameLink
+                          name={g.probableHomePitcherName}
+                          mlbamId={g.probableHomePitcherId}
+                        />
                       </div>
                     )}
                   </div>
@@ -196,7 +216,16 @@ export default function NewsPage() {
                 }
               >
                 <div className="recap-head">
-                  <h2 className="recap-headline">{r.headline}</h2>
+                  <h2 className="recap-headline">
+                    <a
+                      className="recap-headline-link"
+                      href={savantBoxScoreUrl(r.gameId)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {r.headline}
+                    </a>
+                  </h2>
                   <div className="recap-tags">
                     {p && primaryInfo && (
                       <span
@@ -246,5 +275,26 @@ export default function NewsPage() {
           })}
       </div>
     </div>
+  );
+}
+
+function NameLink({
+  name,
+  mlbamId,
+}: {
+  name: string | null;
+  mlbamId: string | null;
+}) {
+  if (!name) return <>TBD</>;
+  if (!mlbamId) return <>{name}</>;
+  return (
+    <a
+      className="pitcher-link"
+      href={savantPlayerUrl(mlbamId)}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {name}
+    </a>
   );
 }

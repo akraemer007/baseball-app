@@ -212,6 +212,8 @@ export function getTeam(teamId: string, season: number): TeamResponse {
       awayTeamId: isHome ? opp.id : team.id,
       probableHomePitcherId: `p-${isHome ? team.id : opp.id}-sp${(i % 5) + 1}`,
       probableAwayPitcherId: `p-${isHome ? opp.id : team.id}-sp${(i % 5) + 1}`,
+      probableHomePitcherName: null,
+      probableAwayPitcherName: null,
       impliedHomeWinProb: Number((0.4 + rand() * 0.2).toFixed(3)),
     };
   });
@@ -472,6 +474,8 @@ export function getProjections(): ProjectionsResponse {
       awayTeamId: away.id,
       probableHomePitcherId: `p-${home.id}-sp${(i % 5) + 1}`,
       probableAwayPitcherId: `p-${away.id}-sp${(i % 5) + 1}`,
+      probableHomePitcherName: null,
+      probableAwayPitcherName: null,
       impliedHomeWinProb: Number((0.35 + rand() * 0.3).toFixed(3)),
     };
   });
