@@ -45,7 +45,12 @@ export function StatDistributionChart({
     const minV = d3.min(vals) ?? 0;
     const maxV = d3.max(vals) ?? 1;
     const pad = (maxV - minV) * 0.08 || 0.1;
-    const x = d3.scaleLinear().domain([minV - pad, maxV + pad]).range([0, innerW]);
+    // For stats where lower values are better (ERA, FIP, errors/game), flip
+    // the axis so "better" is always on the right side of every chart.
+    const x = d3
+      .scaleLinear()
+      .domain([minV - pad, maxV + pad])
+      .range(lowerIsBetter ? [innerW, 0] : [0, innerW]);
     // Stagger dots vertically when they cluster by jittering with a deterministic
     // hash of the abbrev so the layout stays stable across renders.
     const jitter = (abbrev: string) => {
@@ -133,7 +138,7 @@ export function StatDistributionChart({
             );
           })}
 
-          {/* Axis labels left/right to show direction of "better" */}
+          {/* Axis labels: better always on the right, worse always on the left. */}
           <text
             x={0}
             y={innerH + 22}
@@ -141,9 +146,9 @@ export function StatDistributionChart({
             fontSize={9}
             fontFamily="var(--mono)"
             fill="rgba(143, 163, 192, 0.7)"
-            textTransform="uppercase"
+            style={{ textTransform: 'uppercase' }}
           >
-            {lowerIsBetter ? '← better' : 'worse →'}
+            ← worse
           </text>
           <text
             x={innerW}
@@ -152,9 +157,9 @@ export function StatDistributionChart({
             fontSize={9}
             fontFamily="var(--mono)"
             fill="rgba(143, 163, 192, 0.7)"
-            textTransform="uppercase"
+            style={{ textTransform: 'uppercase' }}
           >
-            {lowerIsBetter ? 'worse →' : '← better'}
+            better →
           </text>
         </g>
       </svg>
