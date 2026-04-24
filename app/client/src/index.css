@@ -731,10 +731,40 @@ table.stat-table td.top-performer {
   .percentile-foot {
     display: none;
   }
-  /* Hide the "— percentile vs. league" tail in category headers. */
-  .percentile-head-tail {
-    display: none;
-  }
+}
+
+/* Stat-card title row: category name on the left, scope toggle pinned
+   to the right. Shared state means flipping the toggle on any card
+   re-scopes all three. */
+.stat-card-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.4rem;
+}
+
+.scope-toggle {
+  display: inline-flex;
+  font-size: 0.72rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.scope-toggle > button {
+  padding: 0.2rem 0.65rem;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: inherit;
+}
+
+.scope-toggle > button[data-active='true'] {
+  background: var(--text);
+  color: var(--bg);
 }
 
 /* Host for the row strip-plot. Height flexes between the folded (36px)

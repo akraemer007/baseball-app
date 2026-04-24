@@ -33,15 +33,10 @@ const SUM_STAT_KEYS = new Set([
   'strikeouts_pitching_total',
 ]);
 
-/** Each title has a short head (shown on every device) and a long tail
- *  (hidden on phones to save the vertical space a wrap would take). */
-const CATEGORY_TITLES: Record<
-  'batting' | 'pitching' | 'fielding',
-  { head: string; tail: string }
-> = {
-  batting: { head: 'Batting', tail: ' — percentile vs. league' },
-  pitching: { head: 'Pitching', tail: ' — percentile vs. league' },
-  fielding: { head: 'Other', tail: ' — percentile vs. league' },
+const CATEGORY_TITLES: Record<'batting' | 'pitching' | 'fielding', string> = {
+  batting: 'Batting',
+  pitching: 'Pitching',
+  fielding: 'Other',
 };
 
 /**
@@ -282,53 +277,6 @@ export default function TeamPage() {
         );
       })()}
 
-      {teamLeague && (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            gap: '0.5rem',
-            margin: '-0.25rem 0 -0.25rem',
-          }}
-        >
-          <span className="muted mono" style={{ fontSize: '0.75rem' }}>
-            Compare to
-          </span>
-          <div
-            className="mono"
-            style={{ display: 'inline-flex', fontSize: '0.75rem', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}
-          >
-            <button
-              type="button"
-              onClick={() => setStatScope('mlb')}
-              style={{
-                padding: '0.25rem 0.7rem',
-                background: statScope === 'mlb' ? 'var(--text)' : 'transparent',
-                color: statScope === 'mlb' ? 'var(--bg)' : 'var(--text-dim)',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              All MLB
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatScope('league')}
-              style={{
-                padding: '0.25rem 0.7rem',
-                background: statScope === 'league' ? 'var(--text)' : 'transparent',
-                color: statScope === 'league' ? 'var(--bg)' : 'var(--text-dim)',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              {teamLeague}
-            </button>
-          </div>
-        </div>
-      )}
-
       {(['batting', 'pitching', 'fielding'] as const).map((cat) => {
         const rows = percentileStats
           .filter((s) => s.category === cat)
@@ -337,13 +285,34 @@ export default function TeamPage() {
               (STAT_ORDER[a.statKey] ?? 999) - (STAT_ORDER[b.statKey] ?? 999),
           );
         if (!rows.length) return null;
+        const scopeTag = statScope === 'league' && teamLeague ? teamLeague : 'MLB';
         return (
           <div key={cat} className="card">
-            <h3>
-              {CATEGORY_TITLES[cat].head}
-              <span className="percentile-head-tail">
-                {CATEGORY_TITLES[cat].tail}
+            <h3 className="stat-card-title">
+              <span>
+                {CATEGORY_TITLES[cat]} vs.{' '}
+                <span className="muted mono" style={{ fontWeight: 500 }}>
+                  {scopeTag}
+                </span>
               </span>
+              {teamLeague && (
+                <div className="scope-toggle mono">
+                  <button
+                    type="button"
+                    onClick={() => setStatScope('mlb')}
+                    data-active={statScope === 'mlb'}
+                  >
+                    All MLB
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatScope('league')}
+                    data-active={statScope === 'league'}
+                  >
+                    {teamLeague}
+                  </button>
+                </div>
+              )}
             </h3>
             <div className="percentile-list percentile-list-wide">
               {rows.map((s) => (
