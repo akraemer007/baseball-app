@@ -362,7 +362,7 @@ export function StatDistributionChart({
             top: `${margin.top + midY - (isSpark ? 14 : 28)}px`,
           }}
         >
-          <div className="mono" style={{ color: '#ffffff', fontWeight: 700 }}>
+          <div className="mono" style={{ fontWeight: 700 }}>
             {scopeLabel} average {formatStat(leagueMean, statKey)}
           </div>
         </div>

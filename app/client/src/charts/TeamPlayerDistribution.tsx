@@ -203,10 +203,10 @@ export function TeamPlayerDistribution({
             top: `${margin.top + midY - 60}px`,
           }}
         >
-          <div className="mono" style={{ color: '#ffffff', fontWeight: 700 }}>
+          <div className="mono" style={{ fontWeight: 700 }}>
             {hoveredEntry.playerName}
           </div>
-          <div className="mono" style={{ fontSize: '0.7rem', color: '#cbd4e0' }}>
+          <div className="mono sub">
             {formatStat(hoveredEntry.value, statKey)} ·{' '}
             {side === 'hitter'
               ? `${hoveredEntry.playingTime} AB`

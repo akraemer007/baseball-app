@@ -43,6 +43,10 @@ export function DivisionTrajectoryChart({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(400);
   const [internalHover, setInternalHover] = useState<string | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<{
+    teamId: string;
+    pointIdx: number;
+  } | null>(null);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -139,6 +143,26 @@ export function DivisionTrajectoryChart({
   const handleHover = (teamId: string | null) => {
     setInternalHover(teamId);
     onHoverTeam?.(teamId);
+    if (teamId === null) setHoverPoint(null);
+  };
+
+  // Track mouse across a team's line, snap to the nearest game by x.
+  const handleMove = (e: React.MouseEvent, traj: TeamTrajectory) => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const plotX = e.clientX - rect.left - margin.left;
+    const gamesTarget = x.invert(plotX);
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < traj.points.length; i++) {
+      const d = Math.abs(traj.points[i].gamesPlayed - gamesTarget);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    setHoverPoint({ teamId: traj.teamId, pointIdx: bestIdx });
   };
 
   // Render non-active teams first so the hovered/highlighted team stacks on top.
@@ -148,8 +172,28 @@ export function DivisionTrajectoryChart({
     return aActive - bActive;
   });
 
+  const tooltipData = (() => {
+    if (!hoverPoint) return null;
+    const traj = divTrajectories.find((t) => t.teamId === hoverPoint.teamId);
+    const p = traj?.points[hoverPoint.pointIdx];
+    if (!traj || !p) return null;
+    const team = division.teams.find((t) => t.id === traj.teamId);
+    const w = (p.gamesPlayed + p.wMinusL) / 2;
+    const l = (p.gamesPlayed - p.wMinusL) / 2;
+    return {
+      abbrev: team?.abbrev ?? traj.teamId,
+      color: team?.color ?? '#8fa3c0',
+      wins: w,
+      losses: l,
+      gamesPlayed: p.gamesPlayed,
+      date: p.date,
+      cx: margin.left + x(p.gamesPlayed),
+      cy: margin.top + y(p.wMinusL),
+    };
+  })();
+
   return (
-    <div ref={wrapRef} style={{ width: '100%', height }}>
+    <div ref={wrapRef} style={{ width: '100%', height, position: 'relative' }}>
       <svg width={width} height={height}>
         <g transform={`translate(${margin.left}, ${margin.top})`}>
           {/* Horizontal reference lines */}
@@ -215,6 +259,7 @@ export function DivisionTrajectoryChart({
                 style={{ cursor: 'pointer' }}
                 onMouseEnter={() => handleHover(traj.teamId)}
                 onMouseLeave={() => handleHover(null)}
+                onMouseMove={(e) => handleMove(e, traj)}
                 onClick={() => navigate(`/team/${traj.teamId}`)}
               >
                 {/* Wide invisible hit-line for easy hovering */}
@@ -224,6 +269,22 @@ export function DivisionTrajectoryChart({
                   stroke="transparent"
                   strokeWidth={14}
                 />
+                {/* Crosshair dot at the hovered game */}
+                {hoverPoint && hoverPoint.teamId === traj.teamId && (() => {
+                  const p = traj.points[hoverPoint.pointIdx];
+                  if (!p) return null;
+                  return (
+                    <circle
+                      cx={x(p.gamesPlayed)}
+                      cy={y(p.wMinusL)}
+                      r={4}
+                      fill={color}
+                      stroke="#0a1628"
+                      strokeWidth={1.5}
+                      pointerEvents="none"
+                    />
+                  );
+                })()}
                 {/* Visible line */}
                 <path
                   d={lineGen(traj.points) ?? undefined}
@@ -279,6 +340,34 @@ export function DivisionTrajectoryChart({
           </text>
         </g>
       </svg>
+
+      {tooltipData && (
+        <div
+          className="stat-dist-tooltip"
+          style={{
+            left: `${tooltipData.cx}px`,
+            top: `${tooltipData.cy - 10}px`,
+          }}
+        >
+          <div
+            className="mono"
+            style={{ color: tooltipData.color, fontWeight: 700 }}
+          >
+            {tooltipData.abbrev} {tooltipData.wins}-{tooltipData.losses}
+          </div>
+          <div className="mono sub">
+            {formatTooltipDate(tooltipData.date)} · game {tooltipData.gamesPlayed}
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function formatTooltipDate(iso: string): string {
+  // Expect 'YYYY-MM-DD'. Avoid timezone drift by parsing the parts directly.
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
