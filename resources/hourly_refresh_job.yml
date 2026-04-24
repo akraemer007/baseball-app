@@ -3,10 +3,11 @@ resources:
     ak_baseball_hourly_refresh:
       name: "[${bundle.target}] ak_baseball — hourly refresh (projections)"
       schedule:
-        # Hourly at :00 from 12pm ET through 4am ET next day.
-        # Covers afternoon games through ~1 hour past typical West Coast finish.
-        # Recap generation lives in ak_baseball_morning_recaps instead.
-        quartz_cron_expression: "0 0 0-4,12-23 * * ?"
+        # Hourly at :00 from 12pm ET through midnight ET (final run at
+        # 00:00 ET). Recap generation lives in ak_baseball_morning_recaps
+        # at 05:00 ET, which re-runs the full chain and catches any
+        # post-midnight finishes before recapping.
+        quartz_cron_expression: "0 0 0,12-23 * * ?"
         timezone_id: "America/New_York"
         pause_status: "UNPAUSED"
       max_concurrent_runs: 1
