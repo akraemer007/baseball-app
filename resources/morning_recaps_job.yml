@@ -1,9 +1,12 @@
 resources:
   jobs:
-    ak_baseball_daily_refresh:
-      name: "[${bundle.target}] ak_baseball — daily refresh"
+    ak_baseball_morning_recaps:
+      name: "[${bundle.target}] ak_baseball — morning recaps"
       schedule:
-        quartz_cron_expression: "0 0 7 * * ?"   # 07:00 every day
+        # 05:00 ET daily — 1 hour after the last hourly refresh. The full
+        # chain runs again so any West Coast game that went Final between
+        # 04:00 and 05:00 ET is captured before recap generation fires.
+        quartz_cron_expression: "0 0 5 * * ?"
         timezone_id: "America/New_York"
         pause_status: "UNPAUSED"
       max_concurrent_runs: 1
@@ -69,62 +72,6 @@ resources:
               target_date: "{{job.parameters.recap_target_date}}"
           environment_key: default_env
 
-      environments:
-        - environment_key: default_env
-          spec:
-            client: "2"
-            dependencies:
-              - requests>=2.32
-
-    ak_baseball_backfill:
-      name: "[${bundle.target}] ak_baseball — one-shot backfill"
-      parameters:
-        - name: catalog
-          default: ${var.catalog}
-        - name: schema
-          default: ${var.schema}
-        - name: seasons_back
-          default: ${var.seasons_back}
-      tasks:
-        - task_key: ingest
-          notebook_task:
-            notebook_path: ../jobs/ingest/backfill.py
-            base_parameters:
-              catalog: "{{job.parameters.catalog}}"
-              schema: "{{job.parameters.schema}}"
-              seasons_back: "{{job.parameters.seasons_back}}"
-          environment_key: default_env
-
-        - task_key: refine_silver
-          depends_on:
-            - task_key: ingest
-          notebook_task:
-            notebook_path: ../jobs/refine/silver_transforms.py
-            base_parameters:
-              catalog: "{{job.parameters.catalog}}"
-              schema: "{{job.parameters.schema}}"
-          environment_key: default_env
-
-        - task_key: build_gold
-          depends_on:
-            - task_key: refine_silver
-          sql_task:
-            warehouse_id: ${var.warehouse_id}
-            file:
-              path: ../jobs/gold/build_gold.sql
-            parameters:
-              catalog: "{{job.parameters.catalog}}"
-              schema: "{{job.parameters.schema}}"
-
-        - task_key: compute_elo
-          depends_on:
-            - task_key: build_gold
-          notebook_task:
-            notebook_path: ../jobs/elo/compute_elo.py
-            base_parameters:
-              catalog: "{{job.parameters.catalog}}"
-              schema: "{{job.parameters.schema}}"
-          environment_key: default_env
       environments:
         - environment_key: default_env
           spec:
