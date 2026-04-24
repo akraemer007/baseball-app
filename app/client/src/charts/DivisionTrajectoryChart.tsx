@@ -47,6 +47,15 @@ export function DivisionTrajectoryChart({
     teamId: string;
     pointIdx: number;
   } | null>(null);
+  // 0 → lines hidden from left to right; 1 → fully drawn. Animated via
+  // CSS transition on stroke-dashoffset so the season appears to sweep
+  // across the card on load (and on division change).
+  const [drawProgress, setDrawProgress] = useState(0);
+  useEffect(() => {
+    setDrawProgress(0);
+    const id = requestAnimationFrame(() => setDrawProgress(1));
+    return () => cancelAnimationFrame(id);
+  }, [division.id]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -285,14 +294,21 @@ export function DivisionTrajectoryChart({
                     />
                   );
                 })()}
-                {/* Visible line */}
+                {/* Visible line. pathLength=1 normalizes stroke-dasharray
+                    so we can animate stroke-dashoffset from 1 → 0 to
+                    draw the line left-to-right regardless of its
+                    actual length. */}
                 <path
                   d={lineGen(traj.points) ?? undefined}
                   fill="none"
                   stroke={color}
                   strokeWidth={isActive ? 3.4 : 2.2}
                   strokeOpacity={isDimmed ? 0.22 : 0.98}
+                  pathLength={1}
                   style={{
+                    strokeDasharray: 1,
+                    strokeDashoffset: 1 - drawProgress,
+                    transition: 'stroke-dashoffset 900ms ease-out',
                     filter: isActive ? `drop-shadow(0 0 4px ${color})` : undefined,
                   }}
                 />
