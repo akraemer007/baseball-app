@@ -12,9 +12,6 @@ export default function NavBar() {
       <NavLink to={`/team/${primaryTeam}`} className={({ isActive }) => (isActive ? 'active' : '')}>
         Team
       </NavLink>
-      <NavLink to="/news" className={({ isActive }) => (isActive ? 'active' : '')}>
-        News
-      </NavLink>
     </nav>
   );
 }

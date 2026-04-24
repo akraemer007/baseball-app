@@ -6,6 +6,7 @@ import { usePreferences } from '../lib/preferences';
 import type { Division, LeagueResponse, TeamTrajectory } from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
 import { TeamSparkline } from '../charts/TeamSparkline';
+import NewsSection from '../components/NewsSection';
 
 interface RankedTeam {
   teamId: string;
@@ -255,6 +256,8 @@ export default function LeaguePage() {
           </div>
         </>
       )}
+      {data && <NewsSection />}
+
       {/* Keep allTeams reference alive so a future "favorite a player" picker can reuse it. */}
       {allTeams.length === 0 && null}
     </div>

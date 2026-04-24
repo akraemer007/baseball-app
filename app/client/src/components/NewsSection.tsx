@@ -25,7 +25,13 @@ function yesterdayIso(): string {
   return d.toISOString().slice(0, 10);
 }
 
-export default function NewsPage() {
+/**
+ * Today's projections + newspaper-style recaps, rendered inline on the
+ * League page. Uses the same team-preferences context so primary and
+ * secondary teams surface at the top of both lists. League-meta query
+ * is cache-shared with the League page itself.
+ */
+export default function NewsSection() {
   const season = new Date().getUTCFullYear();
   const [date, setDate] = useState(yesterdayIso());
   const { primaryTeam, secondaryTeam } = usePreferences();
@@ -40,8 +46,6 @@ export default function NewsPage() {
     queryFn: () => apiGet<ProjectionsResponse>('/api/projections/today'),
   });
 
-  // League data gives us team colors + division memberships for the
-  // primary-division tag. Shared cache with the League page (5-min stale).
   const leagueQ = useQuery<LeagueResponse>({
     queryKey: ['league', season],
     queryFn: () => apiGet<LeagueResponse>(`/api/league/divisions?season=${season}`),
@@ -84,21 +88,9 @@ export default function NewsPage() {
     primaryDivisionAbbrevs.has(g.awayTeamId.toUpperCase());
 
   return (
-    <div className="page">
-      <h1>News</h1>
-      <div className="news-date-bar">
-        <label className="muted" style={{ fontSize: '0.85rem' }}>Date:</label>
-        <input
-          type="date"
-          className="date-input"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-      </div>
-
-      {/* Today's projections */}
+    <>
+      <h2 style={{ marginTop: '1.5rem' }}>Today's projections</h2>
       <div className="card">
-        <h3>Today's projections</h3>
         {projQ.isLoading && <p className="muted">Loading projections…</p>}
         {projQ.data && projQ.data.games.length === 0 && (
           <p className="muted">No games scheduled today.</p>
@@ -180,8 +172,19 @@ export default function NewsPage() {
         )}
       </div>
 
-      {/* Newspaper-style recaps */}
-      <h2 style={{ marginTop: '1.5rem' }}>Recaps</h2>
+      <div
+        className="news-date-bar"
+        style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}
+      >
+        <h2 style={{ margin: 0 }}>Recaps</h2>
+        <label className="muted" style={{ fontSize: '0.85rem' }}>Date:</label>
+        <input
+          type="date"
+          className="date-input"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+      </div>
       {recapsQ.isLoading && <p className="muted">Loading recaps…</p>}
       {recapsQ.data && recapsQ.data.recaps.length === 0 && (
         <p className="muted">No games on this date.</p>
@@ -274,7 +277,7 @@ export default function NewsPage() {
             );
           })}
       </div>
-    </div>
+    </>
   );
 }
 
