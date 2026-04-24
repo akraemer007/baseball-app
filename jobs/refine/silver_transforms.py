@@ -409,6 +409,7 @@ _retry_sql(f"""
             g.season,
             p.player_id,
             FIRST(p.player_name) AS player_name_p,
+            FIRST(p.team_id) AS last_team_id_p,
             SUM(p.innings_pitched) AS innings_pitched,
             SUM(p.strikeouts) AS strikeouts_p,
             SUM(p.walks) AS walks_p,
@@ -428,7 +429,9 @@ _retry_sql(f"""
         coalesce(bat.season, pit.season) AS season,
         coalesce(bat.player_id, pit.player_id) AS player_id,
         coalesce(bat.player_name, pit.player_name_p) AS player_name,
-        bat.last_team_id AS team_id,
+        -- Pitchers who never came up to bat have no bat row, so fall
+        -- back to their most-recent team from the pitching rollup.
+        coalesce(bat.last_team_id, pit.last_team_id_p) AS team_id,
         bat.at_bats, bat.hits, bat.runs, bat.rbi, bat.home_runs,
         bat.doubles, bat.triples, bat.walks, bat.strikeouts,
         bat.stolen_bases, bat.total_bases, bat.games,

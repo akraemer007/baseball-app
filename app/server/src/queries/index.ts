@@ -271,9 +271,16 @@ const PLAYER_STAT_SPECS: Record<
 
 /** Dynamic playing-time cutoffs that scale with the team's games-played-so-far.
  *  Hitter = tracks the 3.1 PA/game batting-title rule using AB as a proxy.
- *  Pitcher = inclusive enough to catch regular relievers alongside starters. */
+ *  Pitcher = OR-split so regular relievers survive early-season IP thresholds:
+ *    (a) workload path — IP >= 0.4 * team_games (starters, occasional long men)
+ *    (b) appearance path — pitching_games >= 0.25 * team_games (relievers
+ *        who appear roughly every 4 team games, with a 3-IP floor so we
+ *        don't list September call-ups with one outing).
+ */
 const HITTER_AB_PER_GAME = 2.7;
 const PITCHER_IP_PER_GAME = 0.4;
+const PITCHER_APPEARANCES_PER_GAME = 0.25;
+const PITCHER_MIN_IP = 3;
 
 interface TeamPlayerDistributionRow {
   player_id: number;
@@ -293,7 +300,13 @@ export async function getTeamPlayerStatDistributionFromWarehouse(
   if (!spec) return null;
   const safeAbbrev = teamAbbrev.toUpperCase().replace(/[^A-Z]/g, '');
   const ptCol = spec.side === 'hitter' ? 'p.at_bats' : 'p.innings_pitched';
-  const ptPerGame = spec.side === 'hitter' ? HITTER_AB_PER_GAME : PITCHER_IP_PER_GAME;
+  const eligibility = spec.side === 'hitter'
+    ? `p.at_bats >= ${HITTER_AB_PER_GAME} * (SELECT games FROM games_played)`
+    : `(
+         p.innings_pitched >= ${PITCHER_IP_PER_GAME} * (SELECT games FROM games_played)
+         OR p.pitching_games >= ${PITCHER_APPEARANCES_PER_GAME} * (SELECT games FROM games_played)
+       )
+       AND p.innings_pitched >= ${PITCHER_MIN_IP}`;
 
   const rows = await query<TeamPlayerDistributionRow>(
     `WITH team_row AS (
@@ -326,7 +339,7 @@ export async function getTeamPlayerStatDistributionFromWarehouse(
        JOIN team_row t ON t.team_id = p.team_id
       WHERE p.season = ${season}
         AND ${ptCol} IS NOT NULL
-        AND ${ptCol} >= ${ptPerGame} * (SELECT games FROM games_played)
+        AND ${eligibility}
         AND (${spec.valueExpr}) IS NOT NULL
       ORDER BY value ${spec.lowerIsBetter ? 'ASC' : 'DESC'}`,
   );
