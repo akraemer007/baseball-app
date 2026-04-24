@@ -65,7 +65,7 @@ export function TeamPlayerDistribution({
   });
 
   const layout = useMemo(() => {
-    const margin = { top: 22, right: 28, bottom: 36, left: 28 };
+    const margin = { top: 22, right: 8, bottom: 36, left: 8 };
     const innerW = Math.max(60, width - margin.left - margin.right);
     const innerH = Math.max(60, height - margin.top - margin.bottom);
     let domain: [number, number];

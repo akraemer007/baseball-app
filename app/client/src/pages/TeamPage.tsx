@@ -16,10 +16,7 @@ import type {
   TeamResponse,
 } from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
-import {
-  StatDistributionChart,
-  StatDistributionSpark,
-} from '../charts/StatDistributionChart';
+import { StatDistributionChart } from '../charts/StatDistributionChart';
 import { TeamPlayerDistribution } from '../charts/TeamPlayerDistribution';
 import { InfoTip } from '../components/InfoTip';
 import { formatStat, formatSlashStat } from '../lib/stats';
@@ -613,92 +610,94 @@ function PercentileRow({
       </div>
       <div className="percentile-value muted mono">{formatStat(stat.value, stat.statKey)}</div>
       <div className="percentile-spark-wrap">
-        {scopedData && (
-          <StatDistributionSpark
-            entries={scopedData.entries}
-            lowerIsBetter={scopedData.lowerIsBetter}
-            leagueMean={scopedData.leagueMean}
-            statKey={stat.statKey}
-            scopeLabel={scopeLabel}
-            currentTeamAbbrev={currentTeamAbbrev}
-            primaryTeamAbbrev={primaryTeamAbbrev}
-            secondaryTeamAbbrev={secondaryTeamAbbrev}
-          />
-        )}
+        {scopedData && (() => {
+          // Unify the x-scale across the team chart and the per-player
+          // chart below so dots at the same value land at the same x in
+          // both. Rate stats only — for sum stats (team total vs per-
+          // player total) the magnitudes differ by 1-2 orders so each
+          // chart keeps its own domain. Computed at this level (not inside
+          // the isOpen block) so the folded spark uses the same domain as
+          // the expanded full chart — no horizontal jump on expand.
+          const players = playerDistQ.data;
+          const isSumStat = SUM_STAT_KEYS.has(stat.statKey);
+          let sharedDomain: [number, number] | undefined;
+          if (players && !isSumStat) {
+            const all: number[] = [
+              ...scopedData.entries.map((e) => e.value),
+              ...players.entries.map((e) => e.value),
+              players.teamValue,
+            ];
+            const minV = Math.min(...all);
+            const maxV = Math.max(...all);
+            const pad = (maxV - minV) * 0.08 || 0.1;
+            sharedDomain = [minV - pad, maxV + pad];
+          }
+          return (
+            <StatDistributionChart
+              entries={scopedData.entries}
+              lowerIsBetter={scopedData.lowerIsBetter}
+              leagueMean={scopedData.leagueMean}
+              statKey={stat.statKey}
+              scopeLabel={scopeLabel}
+              currentTeamAbbrev={currentTeamAbbrev}
+              primaryTeamAbbrev={primaryTeamAbbrev}
+              secondaryTeamAbbrev={secondaryTeamAbbrev}
+              xDomain={sharedDomain}
+              detail={isOpen ? 'full' : 'spark'}
+            />
+          );
+        })()}
       </div>
       <div className="percentile-foot muted mono">
         {stat.leagueRankPercentile}th pctl
       </div>
-      {isOpen && scopedData && (
-        <div
-          className="stat-dist-container"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {(() => {
-            // For rate stats, unify the x-scale across the team chart + player
-            // chart so the team's value lines up at the same x in both. For
-            // sum stats (team total vs per-player total) the magnitudes differ
-            // by 1-2 orders, so each chart keeps its own domain.
-            const players = playerDistQ.data;
-            const isSumStat = SUM_STAT_KEYS.has(stat.statKey);
-            let sharedDomain: [number, number] | undefined;
-            if (players && !isSumStat) {
-              const all: number[] = [
-                ...scopedData.entries.map((e) => e.value),
-                ...players.entries.map((e) => e.value),
-                players.teamValue,
-              ];
-              const minV = Math.min(...all);
-              const maxV = Math.max(...all);
-              const pad = (maxV - minV) * 0.08 || 0.1;
-              sharedDomain = [minV - pad, maxV + pad];
-            }
-            return (
-              <>
-                <StatDistributionChart
-                  entries={scopedData.entries}
-                  lowerIsBetter={scopedData.lowerIsBetter}
-                  leagueMean={scopedData.leagueMean}
-                  statKey={stat.statKey}
-                  scopeLabel={scopeLabel}
-                  currentTeamAbbrev={currentTeamAbbrev}
-                  primaryTeamAbbrev={primaryTeamAbbrev}
-                  secondaryTeamAbbrev={secondaryTeamAbbrev}
-                  xDomain={sharedDomain}
-                  height={160}
-                />
-                {players && players.entries.length > 0 && (
-                  <>
-                    <div
-                      className="muted mono"
-                      style={{
-                        fontSize: '0.7rem',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                        marginTop: '0.5rem',
-                        marginBottom: '-0.25rem',
-                      }}
-                    >
-                      {currentTeamAbbrev}{' '}
-                      {players.side === 'hitter' ? 'hitters' : 'pitchers'} ·
-                      qualifying
-                    </div>
-                    <TeamPlayerDistribution
-                      entries={players.entries}
-                      lowerIsBetter={players.lowerIsBetter}
-                      teamValue={players.teamValue}
-                      teamColor={teamColor}
-                      side={players.side}
-                      statKey={stat.statKey}
-                      xDomain={sharedDomain}
-                    />
-                  </>
-                )}
-              </>
-            );
-          })()}
-        </div>
-      )}
+      {isOpen && scopedData && (() => {
+        const players = playerDistQ.data;
+        const isSumStat = SUM_STAT_KEYS.has(stat.statKey);
+        let sharedDomain: [number, number] | undefined;
+        if (players && !isSumStat) {
+          const all: number[] = [
+            ...scopedData.entries.map((e) => e.value),
+            ...players.entries.map((e) => e.value),
+            players.teamValue,
+          ];
+          const minV = Math.min(...all);
+          const maxV = Math.max(...all);
+          const pad = (maxV - minV) * 0.08 || 0.1;
+          sharedDomain = [minV - pad, maxV + pad];
+        }
+        if (!players || players.entries.length === 0) return null;
+        return (
+          <div
+            className="stat-dist-container"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="muted mono"
+              style={{
+                fontSize: '0.7rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                marginTop: '0.25rem',
+                marginBottom: '-0.25rem',
+              }}
+            >
+              {currentTeamAbbrev}{' '}
+              {players.side === 'hitter' ? 'hitters' : 'pitchers'} ·
+              qualifying
+            </div>
+            <TeamPlayerDistribution
+              entries={players.entries}
+              lowerIsBetter={players.lowerIsBetter}
+              teamValue={players.teamValue}
+              teamColor={teamColor}
+              side={players.side}
+              statKey={stat.statKey}
+              xDomain={sharedDomain}
+            />
+          </div>
+        );
+      })()}
     </div>
   );
 }

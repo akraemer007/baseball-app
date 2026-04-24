@@ -737,12 +737,17 @@ table.stat-table td.top-performer {
   }
 }
 
-/* Host for the StatDistributionSpark mini strip-plot. Fixed height so
-   the row grid doesn't reflow when the query resolves from the
-   fallback bar to the SVG spark. */
+/* Host for the (folded) row strip-plot. Fixed height in the folded
+   state so the row grid doesn't reflow when the query resolves from
+   the fallback bar to the SVG. When the row is expanded, height
+   flexes so the chart can grow into its full-detail form in place. */
 .percentile-spark-wrap {
   position: relative;
   height: 36px;
+}
+
+.percentile-row-expandable[data-open='true'] > .percentile-spark-wrap {
+  height: auto;
 }
 
 .percentile-foot {
