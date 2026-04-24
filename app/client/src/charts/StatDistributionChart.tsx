@@ -146,8 +146,17 @@ export function StatDistributionChart({
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height: h, position: 'relative' }}>
-      <svg width={width} height={h} style={{ display: 'block', overflow: 'visible' }}>
-        <g transform={`translate(${margin.left}, ${margin.top})`}>
+      <svg
+        className="stat-dist-chart"
+        width={width}
+        height={h}
+        style={{ display: 'block', overflow: 'visible' }}
+      >
+        <g
+          style={{
+            transform: `translate(${margin.left}px, ${margin.top}px)`,
+          }}
+        >
           {/* Distribution baseline */}
           <line
             x1={0}
@@ -158,14 +167,16 @@ export function StatDistributionChart({
             strokeWidth={1}
           />
 
-          {/* League-mean tick (style varies per mode) + invisible wide
-              hit-line so the tick is easy to hover. */}
+          {/* League-mean tick — both styles always rendered; opacity fades
+              between them so the transition looks like a crossfade. */}
           <g
-            transform={`translate(${x(leagueMean)}, 0)`}
+            style={{
+              transform: `translate(${x(leagueMean)}px, 0px)`,
+              cursor: 'help',
+            }}
             onMouseEnter={() => setLeagueHovered(true)}
             onMouseLeave={() => setLeagueHovered(false)}
             onClick={(e) => e.stopPropagation()}
-            style={{ cursor: 'help' }}
           >
             <line
               y1={-margin.top}
@@ -173,35 +184,35 @@ export function StatDistributionChart({
               stroke="transparent"
               strokeWidth={12}
             />
-            {isSpark ? (
-              <line
-                y1={midY - 8}
-                y2={midY + 8}
-                stroke={leagueHovered ? 'rgba(10, 22, 40, 0.95)' : 'rgba(10, 22, 40, 0.7)'}
-                strokeWidth={leagueHovered ? 1.75 : 1.25}
-              />
-            ) : (
-              <>
-                <line
-                  y1={0}
-                  y2={innerH}
-                  stroke="rgba(10, 22, 40, 0.45)"
-                  strokeWidth={1}
-                  strokeDasharray="2 3"
-                />
-                <text
-                  x={0}
-                  y={-8}
-                  textAnchor="middle"
-                  fontSize={9}
-                  fontFamily="var(--mono)"
-                  fill="rgba(60, 80, 110, 0.85)"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {scopeLabel} average {formatStat(leagueMean, statKey)}
-                </text>
-              </>
-            )}
+            {/* Spark-style hash (visible when folded) */}
+            <line
+              y1={midY - 8}
+              y2={midY + 8}
+              stroke={leagueHovered ? 'rgba(10, 22, 40, 0.95)' : 'rgba(10, 22, 40, 0.7)'}
+              strokeWidth={leagueHovered ? 1.75 : 1.25}
+              opacity={isSpark ? 1 : 0}
+            />
+            {/* Full-style dashed tick (visible when unfolded) */}
+            <line
+              y1={0}
+              y2={innerH}
+              stroke="rgba(10, 22, 40, 0.45)"
+              strokeWidth={1}
+              strokeDasharray="2 3"
+              opacity={isSpark ? 0 : 1}
+            />
+            <text
+              x={0}
+              y={-8}
+              textAnchor="middle"
+              fontSize={9}
+              fontFamily="var(--mono)"
+              fill="rgba(60, 80, 110, 0.85)"
+              opacity={isSpark ? 0 : 1}
+              style={{ pointerEvents: 'none' }}
+            >
+              {scopeLabel} average {formatStat(leagueMean, statKey)}
+            </text>
           </g>
 
           {/* Dots + labels — featured teams on top so they're never hidden. */}
@@ -249,14 +260,16 @@ export function StatDistributionChart({
               return (
                 <g
                   key={e.teamAbbrev}
-                  transform={`translate(${x(e.value)}, ${cy})`}
+                  style={{
+                    transform: `translate(${x(e.value)}px, ${cy}px)`,
+                    cursor: interactive ? 'pointer' : 'default',
+                  }}
                   onMouseEnter={interactive ? () => setHovered(i) : undefined}
                   onMouseLeave={interactive ? () => setHovered(null) : undefined}
                   onClick={interactive ? (ev) => {
                     ev.stopPropagation();
                     navigate(`/team/${e.teamAbbrev}`);
                   } : undefined}
-                  style={interactive ? { cursor: 'pointer' } : undefined}
                 >
                   <circle
                     r={r}
@@ -267,20 +280,22 @@ export function StatDistributionChart({
                       !isSpark && hovered != null && hovered !== i ? 0.35 : 0.95
                     }
                   />
-                  {showLabel && (
-                    <text
-                      x={0}
-                      y={-(r + 3)}
-                      textAnchor="middle"
-                      fontSize={kind === 'current' ? (isSpark ? 10 : 11) : 10}
-                      fontFamily="var(--mono)"
-                      fill="var(--text)"
-                      fontWeight={kind === 'current' ? 700 : kind ? 600 : 500}
-                      style={{ pointerEvents: 'none' }}
-                    >
-                      {e.teamAbbrev}
-                    </text>
-                  )}
+                  {/* Always render so opacity transitions handle fade-in /
+                      fade-out smoothly; y is fixed so the label doesn't
+                      snap when the dot radius changes. */}
+                  <text
+                    x={0}
+                    y={-10}
+                    textAnchor="middle"
+                    fontSize={kind === 'current' ? 11 : 10}
+                    fontFamily="var(--mono)"
+                    fill="var(--text)"
+                    fontWeight={kind === 'current' ? 700 : kind ? 600 : 500}
+                    opacity={showLabel ? 1 : 0}
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    {e.teamAbbrev}
+                  </text>
                 </g>
               );
             })}

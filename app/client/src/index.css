@@ -737,17 +737,34 @@ table.stat-table td.top-performer {
   }
 }
 
-/* Host for the (folded) row strip-plot. Fixed height in the folded
-   state so the row grid doesn't reflow when the query resolves from
-   the fallback bar to the SVG. When the row is expanded, height
-   flexes so the chart can grow into its full-detail form in place. */
+/* Host for the row strip-plot. Height flexes between the folded (36px)
+   and expanded (140px) sizes with a transition so the chart grows in
+   place instead of snapping. */
 .percentile-spark-wrap {
   position: relative;
   height: 36px;
+  transition: height 280ms ease;
 }
 
 .percentile-row-expandable[data-open='true'] > .percentile-spark-wrap {
-  height: auto;
+  height: 140px;
+}
+
+/* Smooth spark↔full evolution for the StatDistributionChart. Every
+   visual property we flip when `detail` changes gets the same timing,
+   so dots grow/jitter/recolor in unison with labels and ticks
+   crossfading. */
+.stat-dist-chart g,
+.stat-dist-chart circle,
+.stat-dist-chart line,
+.stat-dist-chart text {
+  transition:
+    transform 280ms ease,
+    opacity 280ms ease,
+    r 280ms ease,
+    fill 280ms ease,
+    stroke 280ms ease,
+    stroke-width 280ms ease;
 }
 
 .percentile-foot {
