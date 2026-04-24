@@ -393,21 +393,23 @@ function PercentileRow({
       ),
   });
 
-  // Second chart: this team's players, fetched only when the row is
-  // expanded. The endpoint returns 404 for team-level-only stats
-  // (run_diff, ops_plus, etc.) — we silently skip rendering in that
-  // case by detecting the ApiError status.
+  // Second chart: this team's players. Prefetched on row mount (not
+  // gated on `isOpen`) so the expand click is instant — the 30-team
+  // distribution above already follows the same pattern. React-Query
+  // dedupes by key and the server's 5-min LRU cache absorbs reloads.
+  // The endpoint returns 404 for team-level-only stats (run_diff,
+  // ops_plus, etc.); we silently skip rendering in that case.
   const playerDistQ = useQuery<TeamPlayerDistributionResponse>({
     queryKey: ['team-player-dist', currentTeamAbbrev, stat.statKey, season],
     queryFn: () =>
       apiGet<TeamPlayerDistributionResponse>(
         `/api/team/${encodeURIComponent(currentTeamAbbrev)}/player-stat-distribution?stat=${encodeURIComponent(stat.statKey)}&season=${season}`,
       ),
-    enabled: isOpen,
     retry: (failureCount, err) => {
       if (err instanceof ApiError && err.status === 404) return false;
       return failureCount < 2;
     },
+    staleTime: 5 * 60 * 1000,
   });
 
   return (
