@@ -33,29 +33,32 @@ const CATEGORY_TITLES: Record<
 };
 
 /**
- * Explicit display order. Grid fills left-to-right, top-to-bottom, so odd
- * indices land in the left column and even in the right. Put the classic
- * rate stats on the left (AVG/OBP/SLG/OPS/OPS+) and the totals + misc
- * rates on the right.
+ * Explicit display order. The list uses CSS multi-columns on desktop,
+ * which fills column 1 top-to-bottom before column 2 — so consecutive
+ * indices stay grouped together. Rates come first (slash line +
+ * traditional rate stats), counts after. On a phone the single-column
+ * layout reads the same order top-to-bottom, keeping the slash line
+ * adjacent.
  */
 const STAT_ORDER: Record<string, number> = {
-  // Batting — 5 on the left, 5 on the right
+  // Batting rates (column 1 on desktop; top half on phone)
   avg: 1,
-  hits_total: 2,
-  obp: 3,
-  hr_total: 4,
-  slg: 5,
-  walks_total: 6,
-  ops: 7,
-  runs_per_game: 8,
-  ops_plus: 9,
+  obp: 2,
+  slg: 3,
+  ops: 4,
+  ops_plus: 5,
+  // Batting counts + per-game rates (column 2 on desktop)
+  hits_total: 6,
+  hr_total: 7,
+  walks_total: 8,
+  runs_per_game: 9,
   hr_per_game: 10,
-  // Pitching
+  // Pitching — rates first, totals after
   era: 11,
-  k_per_9: 12,
-  era_minus: 13,
-  strikeouts_pitching_total: 14,
-  fip: 15,
+  era_minus: 12,
+  fip: 13,
+  k_per_9: 14,
+  strikeouts_pitching_total: 15,
   // Other
   run_diff: 16,
   errors_per_game: 17,
@@ -199,7 +202,6 @@ export default function TeamPage() {
                   key={s.statKey}
                   stat={s}
                   season={season}
-                  teamColor={team.color}
                   currentTeamAbbrev={team.id}
                   primaryTeamAbbrev={primaryTeam}
                   secondaryTeamAbbrev={secondaryTeam}
@@ -349,7 +351,6 @@ export default function TeamPage() {
 function PercentileRow({
   stat,
   season,
-  teamColor,
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
@@ -358,7 +359,6 @@ function PercentileRow({
 }: {
   stat: PercentileStat;
   season: number;
-  teamColor: string;
   currentTeamAbbrev: string;
   primaryTeamAbbrev: string;
   secondaryTeamAbbrev: string;
@@ -401,7 +401,7 @@ function PercentileRow({
       </div>
       <div className="percentile-value muted mono">{stat.value}</div>
       <div className="percentile-spark-wrap">
-        {data ? (
+        {data && (
           <StatDistributionSpark
             entries={data.entries}
             lowerIsBetter={data.lowerIsBetter}
@@ -410,19 +410,6 @@ function PercentileRow({
             primaryTeamAbbrev={primaryTeamAbbrev}
             secondaryTeamAbbrev={secondaryTeamAbbrev}
           />
-        ) : (
-          // Thin fallback bar while the distribution is fetching so the
-          // row's layout doesn't jank.
-          <div className="percentile-spark-fallback">
-            <div
-              style={{
-                width: `${stat.leagueRankPercentile}%`,
-                background: teamColor,
-                height: '100%',
-                opacity: 0.6,
-              }}
-            />
-          </div>
         )}
       </div>
       <div className="percentile-foot muted mono">
