@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { HealthResponse } from '../../shared/types.js';
+import type { HealthResponse } from '../../shared/types/index.js';
 import { config } from './config.js';
 import { cacheMiddleware } from './lib/cache.js';
 import leagueRouter from './routes/league.js';

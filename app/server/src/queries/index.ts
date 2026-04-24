@@ -16,7 +16,7 @@ import type {
   StatDistributionResponse,
   TeamPlayerDistributionResponse,
   TeamResponse,
-} from '../../../shared/types.js';
+} from '../../../shared/types/index.js';
 import { query } from '../lib/warehouse.js';
 
 // ---- helpers ---------------------------------------------------------------

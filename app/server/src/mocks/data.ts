@@ -9,7 +9,7 @@ import type {
   RecapsResponse,
   TeamResponse,
   TeamTrajectory,
-} from '../../../shared/types.js';
+} from '../../../shared/types/index.js';
 
 // All 30 MLB teams keyed by abbreviation.
 const TEAMS = {
