@@ -104,6 +104,7 @@ export default function TeamPage() {
   const navigate = useNavigate();
   const season = new Date().getUTCFullYear();
   const [expandedStat, setExpandedStat] = useState<string | null>(null);
+  const [trajectoryMode, setTrajectoryMode] = useState<'division' | 'yoy'>('division');
   const { primaryTeam, secondaryTeam } = usePreferences();
 
   const teamQ = useQuery<TeamResponse>({
@@ -114,6 +115,14 @@ export default function TeamPage() {
   const leagueQ = useQuery<LeagueResponse>({
     queryKey: ['league', season],
     queryFn: () => apiGet<LeagueResponse>(`/api/league/divisions?season=${season}`),
+  });
+
+  const lastYearQ = useQuery<LeagueResponse>({
+    queryKey: ['league', season - 1],
+    queryFn: () =>
+      apiGet<LeagueResponse>(`/api/league/divisions?season=${season - 1}`),
+    enabled: trajectoryMode === 'yoy',
+    staleTime: 5 * 60 * 1000,
   });
 
   const teamDivision = useMemo(() => {
@@ -182,17 +191,84 @@ export default function TeamPage() {
         </span>
       </p>
 
-      {teamDivision && leagueQ.data && (
-        <div className="card">
-          <h3>Season trajectory ({teamDivision.name})</h3>
-          <DivisionTrajectoryChart
-            division={teamDivision}
-            trajectories={leagueQ.data.trajectory}
-            highlightTeamId={team.id}
-            height={240}
-          />
-        </div>
-      )}
+      {teamDivision && leagueQ.data && (() => {
+        const currentTraj = leagueQ.data.trajectory.find((t) => t.teamId === team.id);
+        const gamesSoFar = currentTraj?.points.length ?? 0;
+        const lastYearTraj = lastYearQ.data?.trajectory.find((t) => t.teamId === team.id);
+        const isYoy = trajectoryMode === 'yoy';
+        const ghost = isYoy && lastYearTraj
+          ? { ...lastYearTraj, points: lastYearTraj.points.slice(0, gamesSoFar) }
+          : null;
+        const trajectoriesForChart = isYoy
+          ? (currentTraj ? [currentTraj] : [])
+          : leagueQ.data.trajectory;
+        return (
+          <div className="card">
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.5rem',
+              }}
+            >
+              <h3 style={{ margin: 0 }}>
+                {isYoy
+                  ? `Season trajectory — ${season} vs ${season - 1}`
+                  : `Season trajectory (${teamDivision.name})`}
+              </h3>
+              <div
+                className="mono"
+                style={{ display: 'inline-flex', fontSize: '0.75rem', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setTrajectoryMode('division')}
+                  style={{
+                    padding: '0.25rem 0.7rem',
+                    background: trajectoryMode === 'division' ? 'var(--text)' : 'transparent',
+                    color: trajectoryMode === 'division' ? 'var(--bg)' : 'var(--text-dim)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Division
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTrajectoryMode('yoy')}
+                  style={{
+                    padding: '0.25rem 0.7rem',
+                    background: trajectoryMode === 'yoy' ? 'var(--text)' : 'transparent',
+                    color: trajectoryMode === 'yoy' ? 'var(--bg)' : 'var(--text-dim)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  vs {season - 1}
+                </button>
+              </div>
+            </div>
+            <DivisionTrajectoryChart
+              division={teamDivision}
+              trajectories={trajectoriesForChart}
+              highlightTeamId={team.id}
+              ghostTrajectory={ghost}
+              height={240}
+            />
+            {isYoy && lastYearQ.isLoading && (
+              <p className="muted" style={{ fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+                Loading {season - 1} trajectory…
+              </p>
+            )}
+            {isYoy && lastYearQ.data && !lastYearTraj && (
+              <p className="muted" style={{ fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+                No {season - 1} data for {team.abbrev}.
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {(['batting', 'pitching', 'fielding'] as const).map((cat) => {
         const rows = percentileStats

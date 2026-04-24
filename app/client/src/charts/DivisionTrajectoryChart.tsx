@@ -12,6 +12,15 @@ interface Props {
    * the rest fade back. Pass null to render all equally.
    */
   highlightTeamId?: string | null;
+  /**
+   * Optional "last year" trajectory for the highlighted team, shown as
+   * a dashed ghost line at lower opacity. The chart's x-scale already
+   * spans the max games across all trajectories, so the ghost just
+   * uses its own {gamesPlayed, wMinusL} points as-is — truncate to
+   * current team's games played upstream if the ghost should only
+   * overlay the current time window.
+   */
+  ghostTrajectory?: TeamTrajectory | null;
   /** Optional external hover setter so the parent can sync with team chips. */
   onHoverTeam?: (teamId: string | null) => void;
 }
@@ -27,6 +36,7 @@ export function DivisionTrajectoryChart({
   trajectories,
   height = 180,
   highlightTeamId = null,
+  ghostTrajectory = null,
   onHoverTeam,
 }: Props) {
   const navigate = useNavigate();
@@ -55,9 +65,16 @@ export function DivisionTrajectoryChart({
     const innerW = Math.max(40, width - margin.left - margin.right);
     const innerH = Math.max(60, height - margin.top - margin.bottom);
 
-    const maxGames =
+    const maxGamesDiv =
       d3.max(divTrajectories, (d) => d3.max(d.points, (p) => p.gamesPlayed)) ?? 162;
-    const allY = divTrajectories.flatMap((t) => t.points.map((p) => p.wMinusL));
+    const maxGamesGhost = ghostTrajectory
+      ? d3.max(ghostTrajectory.points, (p) => p.gamesPlayed) ?? 0
+      : 0;
+    const maxGames = Math.max(maxGamesDiv, maxGamesGhost);
+    const allY = [
+      ...divTrajectories.flatMap((t) => t.points.map((p) => p.wMinusL)),
+      ...(ghostTrajectory?.points.map((p) => p.wMinusL) ?? []),
+    ];
     const absMax = Math.max(
       3,
       Math.abs(d3.max(allY) ?? 0),
@@ -101,7 +118,7 @@ export function DivisionTrajectoryChart({
     const labelByTeam = new Map(labelRows.map((r) => [r.teamId, r]));
 
     return { margin, innerW, innerH, x, y, yTicks, maxGames, divTrajectories, labelByTeam, LABEL_FS };
-  }, [division, trajectories, width, height]);
+  }, [division, trajectories, width, height, ghostTrajectory]);
 
   if (!chart) {
     return (
@@ -164,6 +181,25 @@ export function DivisionTrajectoryChart({
               {v > 0 ? `+${v}` : v}
             </text>
           ))}
+
+          {/* "Last year" ghost line for the highlighted team, drawn under
+              the live team lines so it sits visually behind them. */}
+          {ghostTrajectory && ghostTrajectory.points.length > 0 && (() => {
+            const team = division.teams.find(
+              (t) => t.id === ghostTrajectory.teamId,
+            );
+            const color = team?.color ?? '#8fa3c0';
+            return (
+              <path
+                d={lineGen(ghostTrajectory.points) ?? undefined}
+                fill="none"
+                stroke={color}
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                opacity={0.45}
+              />
+            );
+          })()}
 
           {/* Team lines + labels (grouped so they're clickable) */}
           {sortedByZ.map((traj) => {
