@@ -12,6 +12,9 @@ export default function NavBar() {
       <NavLink to={`/team/${primaryTeam}`} className={({ isActive }) => (isActive ? 'active' : '')}>
         Team
       </NavLink>
+      <NavLink to="/players" className={({ isActive }) => (isActive ? 'active' : '')}>
+        Players
+      </NavLink>
     </nav>
   );
 }

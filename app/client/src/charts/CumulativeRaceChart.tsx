@@ -1,5 +1,6 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
+import { savantPlayerUrl } from '../lib/savant';
 
 export interface RaceSeries {
   id: string;
@@ -7,6 +8,8 @@ export interface RaceSeries {
   color?: string;
   /** Array of {x, y} where x is game number (or any monotonic index) and y is cumulative value */
   points: { x: number; y: number }[];
+  /** MLBAM id — if present, the right-edge label becomes a Savant-player anchor. */
+  mlbamId?: string;
 }
 
 interface Props {
@@ -16,6 +19,18 @@ interface Props {
   xLabel?: string;
   /** Series id to render in the foreground (highlighted). Others fade to grey. */
   highlightId?: string | null;
+  /**
+   * Extra ids to render with a thicker stroke (without the halo that
+   * `highlightId` applies). Useful when multiple lines are "more
+   * important than the rest" but no one line is the single focus.
+   */
+  featuredIds?: string[];
+  /**
+   * Whether non-highlighted series fade to grey. Default true preserves
+   * per-player-page semantics. Pass false on landing/overview pages where
+   * every line is relevant — each series then renders in its own color.
+   */
+  fadePeers?: boolean;
   /** Title rendered above the chart (optional) */
   title?: string;
 }
@@ -34,8 +49,11 @@ export function CumulativeRaceChart({
   yLabel,
   xLabel = 'game',
   highlightId = null,
+  featuredIds,
+  fadePeers = true,
   title,
 }: Props) {
+  const featuredSet = useMemo(() => new Set(featuredIds ?? []), [featuredIds]);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(600);
 
@@ -64,15 +82,14 @@ export function CumulativeRaceChart({
     const xTicks = x.ticks(Math.min(6, Math.floor(innerW / 80)));
     const yTicks = y.ticks(Math.min(6, Math.floor(innerH / 45)));
 
-    // Highlighted series rendered last so it sits on top.
-    const sorted = [...series].sort((a, b) => {
-      if (a.id === highlightId) return 1;
-      if (b.id === highlightId) return -1;
-      return 0;
-    });
+    // Featured / highlighted series render last so they sit on top.
+    // Order: peers < featured < highlight.
+    const rank = (id: string) =>
+      id === highlightId ? 2 : featuredSet.has(id) ? 1 : 0;
+    const sorted = [...series].sort((a, b) => rank(a.id) - rank(b.id));
 
     return { margin, innerW, innerH, x, y, xTicks, yTicks, sorted };
-  }, [series, width, height, highlightId]);
+  }, [series, width, height, highlightId, featuredSet]);
 
   if (!chart) {
     return (
@@ -160,14 +177,24 @@ export function CumulativeRaceChart({
           {/* Series lines */}
           {sorted.map((s) => {
             const isHighlight = highlightId === s.id;
+            const isFeatured = !isHighlight && featuredSet.has(s.id);
             const color = s.color ?? '#8fa3c0';
+            // When fading is off, every peer keeps its own color (just at
+            // normal weight). When fading is on, peers wash to grey.
+            const strokeColor = isHighlight || isFeatured
+              ? color
+              : fadePeers
+                ? 'rgba(60, 80, 110, 0.35)'
+                : color;
+            const strokeWidth = isHighlight ? 2.4 : isFeatured ? 2 : 1.25;
             return (
               <path
                 key={s.id}
                 d={lineGen(s.points) ?? undefined}
                 fill="none"
-                stroke={isHighlight ? color : 'rgba(60, 80, 110, 0.35)'}
-                strokeWidth={isHighlight ? 2.4 : 1.0}
+                stroke={strokeColor}
+                strokeWidth={strokeWidth}
+                opacity={isHighlight || isFeatured || !fadePeers ? 1 : 0.8}
                 style={{
                   filter: isHighlight ? `drop-shadow(0 0 4px ${color})` : undefined,
                 }}
@@ -175,25 +202,46 @@ export function CumulativeRaceChart({
             );
           })}
 
-          {/* Right-edge labels */}
+          {/* Right-edge labels. When the series carries an mlbamId the
+              label becomes a Savant-player anchor. */}
           {sorted.map((s) => {
             const last = s.points[s.points.length - 1];
             if (!last) return null;
             const isHighlight = highlightId === s.id;
+            const isFeatured = !isHighlight && featuredSet.has(s.id);
             const color = s.color ?? '#8fa3c0';
-            return (
+            const fill = isHighlight || isFeatured
+              ? color
+              : fadePeers
+                ? 'rgba(60, 80, 110, 0.55)'
+                : color;
+            const fontWeight = isHighlight ? 700 : isFeatured ? 600 : 500;
+            const textEl = (
               <text
-                key={`lbl-${s.id}`}
                 x={x(last.x) + 4}
                 y={y(last.y)}
                 dy="0.32em"
                 fontSize={10}
                 fontFamily="var(--mono)"
-                fill={isHighlight ? color : 'rgba(60, 80, 110, 0.55)'}
-                fontWeight={isHighlight ? 600 : 400}
+                fill={fill}
+                fontWeight={fontWeight}
+                style={{ cursor: s.mlbamId ? 'pointer' : undefined }}
               >
                 {s.label}
               </text>
+            );
+            if (!s.mlbamId) {
+              return <g key={`lbl-${s.id}`}>{textEl}</g>;
+            }
+            return (
+              <a
+                key={`lbl-${s.id}`}
+                href={savantPlayerUrl(s.mlbamId)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {textEl}
+              </a>
             );
           })}
 

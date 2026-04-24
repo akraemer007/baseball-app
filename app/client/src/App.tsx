@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import NavBar from './components/NavBar';
 import LeaguePage from './pages/LeaguePage';
 import TeamPage from './pages/TeamPage';
-import PlayerPage from './pages/PlayerPage';
+import PlayersPage from './pages/PlayersPage';
 
 export default function App() {
   return (
@@ -11,7 +11,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LeaguePage />} />
         <Route path="/team/:teamId" element={<TeamPage />} />
-        <Route path="/player/:playerId" element={<PlayerPage />} />
+        <Route path="/players" element={<PlayersPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
