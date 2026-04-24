@@ -1,6 +1,7 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
 import { savantPlayerUrl } from '../lib/savant';
+import { formatStat } from '../lib/stats';
 import type { TeamPlayerDistributionEntry } from '@shared/types';
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
   /** Team color used for every dot (all players on the same team). */
   teamColor: string;
   side: 'hitter' | 'pitcher';
+  statKey?: string;
   /** Override the computed [min, max] value-axis domain. Used to share the
    *  x-scale with the team-level chart above so the team's tick lines up
    *  at the same x in both charts. */
@@ -31,6 +33,7 @@ export function TeamPlayerDistribution({
   teamValue,
   teamColor,
   side,
+  statKey,
   xDomain,
   height = 130,
 }: Props) {
@@ -76,7 +79,7 @@ export function TeamPlayerDistribution({
   // Alternate labels above / below the baseline to reduce collisions.
   const labelSide = (i: number): 'above' | 'below' => (i % 2 === 0 ? 'above' : 'below');
 
-  const teamValueLabel = teamValue.toFixed(teamValue < 1 ? 3 : 2);
+  const teamValueLabel = formatStat(teamValue, statKey);
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height, position: 'relative' }}>
@@ -191,7 +194,7 @@ export function TeamPlayerDistribution({
             {hoveredEntry.playerName}
           </div>
           <div className="mono" style={{ fontSize: '0.7rem', color: '#cbd4e0' }}>
-            {hoveredEntry.value} ·{' '}
+            {formatStat(hoveredEntry.value, statKey)} ·{' '}
             {side === 'hitter'
               ? `${hoveredEntry.playingTime} AB`
               : `${hoveredEntry.playingTime} IP`}

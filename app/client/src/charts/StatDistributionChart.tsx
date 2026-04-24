@@ -8,11 +8,16 @@ import {
 import { useNavigate } from 'react-router-dom';
 import * as d3 from 'd3';
 import type { StatDistributionEntry } from '@shared/types';
+import { formatStat } from '../lib/stats';
 
 interface Props {
   entries: StatDistributionEntry[];
   lowerIsBetter: boolean;
   leagueMean: number;
+  /** Used for MLB-convention formatting (no leading zero on slash-line rates). */
+  statKey?: string;
+  /** Label used on the reference-tick tooltip/text — "MLB", "NL", or "AL". */
+  scopeLabel?: string;
   /** The team whose page we're on — gets the biggest dot + label + dark outline. */
   currentTeamAbbrev: string;
   /** User's primary team — called out with a medium outline + label when it's
@@ -41,6 +46,8 @@ export function StatDistributionChart({
   entries,
   lowerIsBetter,
   leagueMean,
+  statKey,
+  scopeLabel = 'MLB',
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
@@ -136,7 +143,7 @@ export function StatDistributionChart({
               fontFamily="var(--mono)"
               fill="rgba(60, 80, 110, 0.85)"
             >
-              lg avg {leagueMean.toFixed(leagueMean < 1 ? 3 : 2)}
+              {scopeLabel} average {formatStat(leagueMean, statKey)}
             </text>
           </g>
 
@@ -241,10 +248,11 @@ export function StatDistributionChart({
           </div>
           <div>{hoveredEntry.teamName}</div>
           <div className="muted mono" style={{ fontSize: '0.7rem' }}>
-            {hoveredEntry.value} · rank {hoveredEntry.rank}
+            {formatStat(hoveredEntry.value, statKey)} · rank {hoveredEntry.rank}
           </div>
         </div>
       )}
+
     </div>
   );
 }
@@ -258,6 +266,8 @@ interface SparkProps {
   entries: StatDistributionEntry[];
   lowerIsBetter: boolean;
   leagueMean: number;
+  statKey?: string;
+  scopeLabel?: string;
   currentTeamAbbrev: string;
   primaryTeamAbbrev?: string;
   secondaryTeamAbbrev?: string;
@@ -268,6 +278,8 @@ export function StatDistributionSpark({
   entries,
   lowerIsBetter,
   leagueMean,
+  statKey,
+  scopeLabel = 'MLB',
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
@@ -275,6 +287,7 @@ export function StatDistributionSpark({
 }: SparkProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(400);
+  const [leagueHovered, setLeagueHovered] = useState(false);
 
   // Belt-and-suspenders measurement. ResizeObserver handles the common
   // case, but it can miss fires when a parent grid cell changes column
@@ -340,10 +353,10 @@ export function StatDistributionSpark({
         width: '100%',
         height,
         position: 'relative',
-        overflow: 'hidden',
+        overflow: 'visible',
       }}
     >
-      <svg width={width} height={height} style={{ display: 'block' }}>
+      <svg width={width} height={height} style={{ display: 'block', overflow: 'visible' }}>
         <g transform={`translate(${padX}, ${padTop})`}>
           {/* Distribution baseline — a soft line everyone sits on so the
               strip reads as a single value axis, not a point cloud. */}
@@ -355,14 +368,32 @@ export function StatDistributionSpark({
             stroke="rgba(10, 22, 40, 0.18)"
             strokeWidth={1}
           />
-          <line
-            x1={x(leagueMean)}
-            x2={x(leagueMean)}
-            y1={midY - 8}
-            y2={midY + 8}
-            stroke="rgba(10, 22, 40, 0.7)"
-            strokeWidth={1.25}
-          />
+          {/* Wide invisible hit-line + dark visible tick for league avg.
+              Stops pointer events reaching the row underneath so the click
+              doesn't toggle row expansion while hovering the tooltip. */}
+          <g
+            onMouseEnter={() => setLeagueHovered(true)}
+            onMouseLeave={() => setLeagueHovered(false)}
+            onClick={(e) => e.stopPropagation()}
+            style={{ cursor: 'help' }}
+          >
+            <line
+              x1={x(leagueMean)}
+              x2={x(leagueMean)}
+              y1={-padTop}
+              y2={innerH + 2}
+              stroke="transparent"
+              strokeWidth={12}
+            />
+            <line
+              x1={x(leagueMean)}
+              x2={x(leagueMean)}
+              y1={midY - 8}
+              y2={midY + 8}
+              stroke={leagueHovered ? 'rgba(10, 22, 40, 0.95)' : 'rgba(10, 22, 40, 0.7)'}
+              strokeWidth={leagueHovered ? 1.75 : 1.25}
+            />
+          </g>
 
           {/* Non-featured teams: tiny, monochrome, sitting exactly on the
               baseline. They form a quiet distribution "haze" so the
@@ -457,6 +488,20 @@ export function StatDistributionSpark({
             })}
         </g>
       </svg>
+
+      {leagueHovered && (
+        <div
+          className="stat-dist-tooltip"
+          style={{
+            left: `${padX + x(leagueMean)}px`,
+            top: `${padTop + midY - 14}px`,
+          }}
+        >
+          <div className="mono" style={{ color: '#ffffff', fontWeight: 700 }}>
+            {scopeLabel} average {formatStat(leagueMean, statKey)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
