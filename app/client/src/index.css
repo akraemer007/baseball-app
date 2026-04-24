@@ -791,6 +791,20 @@ table.stat-table td.top-performer {
   padding: 0.6rem 0.75rem;
 }
 
+/* Final games recede slightly so the eye is drawn to upcoming/in-progress
+   games first — the result's already known, it's context, not projection. */
+.proj-card-final {
+  opacity: 0.82;
+}
+
+.pill.final-tag {
+  margin-left: 0.4rem;
+  background: #e1e6ee;
+  color: #2a3a57;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
 
 .proj-matchup {
   font-size: 0.95rem;

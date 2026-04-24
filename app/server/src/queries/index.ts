@@ -807,10 +807,14 @@ export async function getRecapsDaysFromWarehouse(days: number): Promise<RecapsRe
 interface ProjectionRow {
   game_pk: number;
   game_date: string;
+  status: string;
   home_team_id: number;
   home_abbrev: string;
   away_team_id: number;
   away_abbrev: string;
+  home_score: number | null;
+  away_score: number | null;
+  winner_team_id: number | null;
   home_probable_pitcher_id: number | null;
   away_probable_pitcher_id: number | null;
   home_probable_pitcher_name: string | null;
@@ -818,12 +822,26 @@ interface ProjectionRow {
   home_win_prob: number | null;
 }
 
+/** "Today" in baseball-scoreboard terms is America/New_York, not UTC.
+ *  At 9 PM ET on 4/23 a UTC-based date string already reports 4/24,
+ *  which would make us show tomorrow's slate instead of tonight's
+ *  just-finished games. */
+function todayEt(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
 export async function getProjectionsFromWarehouse(): Promise<ProjectionsResponse> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayEt();
   const rows = await query<ProjectionRow>(
-    `SELECT g.game_pk, g.game_date,
+    `SELECT g.game_pk, g.game_date, g.status,
             g.home_team_id, h.abbrev AS home_abbrev,
             g.away_team_id, a.abbrev AS away_abbrev,
+            g.home_score, g.away_score, g.winner_team_id,
             g.home_probable_pitcher_id, g.away_probable_pitcher_id,
             hp.player_name AS home_probable_pitcher_name,
             ap.player_name AS away_probable_pitcher_name,
@@ -837,7 +855,6 @@ export async function getProjectionsFromWarehouse(): Promise<ProjectionsResponse
          ON ap.player_id = g.away_probable_pitcher_id AND ap.season = g.season
        LEFT JOIN gold_game_elo e USING (game_pk)
       WHERE g.game_date = '${today}'
-        AND g.status != 'Final'
       ORDER BY g.game_pk`
   );
   return {
@@ -856,6 +873,15 @@ export async function getProjectionsFromWarehouse(): Promise<ProjectionsResponse
       probableHomePitcherName: g.home_probable_pitcher_name,
       probableAwayPitcherName: g.away_probable_pitcher_name,
       impliedHomeWinProb: g.home_win_prob ?? 0.5,
+      status: g.status,
+      homeScore: g.home_score,
+      awayScore: g.away_score,
+      winnerTeamId:
+        g.winner_team_id === null
+          ? null
+          : g.winner_team_id === g.home_team_id
+            ? g.home_abbrev
+            : g.away_abbrev,
     })),
   };
 }

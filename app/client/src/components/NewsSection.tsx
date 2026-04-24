@@ -19,8 +19,17 @@ function formatGameType(t: string): string {
   }
 }
 
+/** "Yesterday" in baseball-scoreboard terms (America/New_York), not UTC.
+ *  At 9 PM ET on 4/23 a UTC-yesterday would report 4/23 — but the user
+ *  considers today 4/23 and yesterday 4/22. */
 function yesterdayIso(): string {
-  const d = new Date();
+  const todayEt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const d = new Date(`${todayEt}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
   return d.toISOString().slice(0, 10);
 }
@@ -89,7 +98,7 @@ export default function NewsSection() {
 
   return (
     <>
-      <h2 style={{ marginTop: '1.5rem' }}>Today's projections</h2>
+      <h2 style={{ marginTop: '1.5rem' }}>Today's games</h2>
       <div className="card">
         {projQ.isLoading && <p className="muted">Loading projections…</p>}
         {projQ.data && projQ.data.games.length === 0 && (
@@ -104,14 +113,34 @@ export default function NewsSection() {
                 return bP - aP;
               })
               .map((g) => {
+                const isFinal = g.status === 'Final';
                 const homeFav = g.impliedHomeWinProb > 0.5;
+                const favAbbrev = homeFav ? g.homeTeamId : g.awayTeamId;
                 const favPct = (homeFav ? g.impliedHomeWinProb : 1 - g.impliedHomeWinProb) * 100;
+                const predictionHit =
+                  isFinal && g.winnerTeamId
+                    ? g.winnerTeamId.toUpperCase() === favAbbrev.toUpperCase()
+                    : null;
                 const p = isPrimary(g);
                 const s = !p && isSecondary(g);
+                const homeIsWinner =
+                  isFinal && g.winnerTeamId
+                    ? g.winnerTeamId.toUpperCase() === g.homeTeamId.toUpperCase()
+                    : false;
+                const awayIsWinner =
+                  isFinal && g.winnerTeamId
+                    ? g.winnerTeamId.toUpperCase() === g.awayTeamId.toUpperCase()
+                    : false;
+                // Link the matchup to the box score for Finals, preview
+                // otherwise — Savant has both pages but the preview gets
+                // stale once a game ends.
+                const matchupHref = isFinal
+                  ? savantBoxScoreUrl(g.gameId)
+                  : savantPreviewUrl(g.gameId, g.date);
                 return (
                   <div
                     key={g.gameId}
-                    className={`proj-card${p ? ' proj-card-primary' : s ? ' proj-card-secondary' : ''}`}
+                    className={`proj-card${p ? ' proj-card-primary' : s ? ' proj-card-secondary' : ''}${isFinal ? ' proj-card-final' : ''}`}
                     style={
                       p && primaryInfo
                         ? {
@@ -126,12 +155,27 @@ export default function NewsSection() {
                     <div className="proj-matchup mono">
                       <a
                         className="proj-matchup-link"
-                        href={savantPreviewUrl(g.gameId, g.date)}
+                        href={matchupHref}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        {g.awayTeamId} @ <strong>{g.homeTeamId}</strong>
+                        {isFinal && g.awayScore != null && g.homeScore != null ? (
+                          <>
+                            <span style={{ fontWeight: awayIsWinner ? 700 : 400 }}>
+                              {g.awayTeamId} {g.awayScore}
+                            </span>
+                            {' · '}
+                            <span style={{ fontWeight: homeIsWinner ? 700 : 400 }}>
+                              {g.homeTeamId} {g.homeScore}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            {g.awayTeamId} @ <strong>{g.homeTeamId}</strong>
+                          </>
+                        )}
                       </a>
+                      {isFinal && <span className="pill final-tag">FINAL</span>}
                       {p && primaryInfo && (
                         <span
                           className="pill team-tag"
@@ -150,7 +194,9 @@ export default function NewsSection() {
                       )}
                     </div>
                     <div className="proj-lean muted mono">
-                      lean: {homeFav ? g.homeTeamId : g.awayTeamId} ({favPct.toFixed(0)}%)
+                      {isFinal
+                        ? `lean ${favAbbrev} (${favPct.toFixed(0)}%) — ${predictionHit ? 'hit' : 'miss'}`
+                        : `lean: ${favAbbrev} (${favPct.toFixed(0)}%)`}
                     </div>
                     {(g.probableAwayPitcherName || g.probableHomePitcherName) && (
                       <div className="muted" style={{ fontSize: '0.75rem' }}>

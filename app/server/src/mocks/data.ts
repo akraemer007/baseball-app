@@ -461,7 +461,12 @@ export function getRecapsDays(days: number, anchor?: string) {
 }
 
 export function getProjections(): ProjectionsResponse {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
   const rand = mulberry32(hashSeed(today));
   const games = Array.from({ length: 12 }).map((_, i) => {
     const home = Object.values(TEAMS)[Math.floor(rand() * 30)];

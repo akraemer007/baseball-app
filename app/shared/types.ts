@@ -89,6 +89,15 @@ export interface ScheduledGame {
   probableHomePitcherName: string | null;
   probableAwayPitcherName: string | null;
   impliedHomeWinProb: number; // 0-1
+  /** silver_game.status. "Final" means the score is settled; anything
+   *  else (Scheduled, Pre-Game, In Progress, Delayed, Postponed) is still
+   *  treated as a pre-game projection in the UI. */
+  status?: string;
+  /** Populated when status === 'Final'; null/undefined otherwise. */
+  homeScore?: number | null;
+  awayScore?: number | null;
+  /** Abbrev of the winning team when Final; null otherwise. */
+  winnerTeamId?: string | null;
 }
 
 export interface TeamResponse {
