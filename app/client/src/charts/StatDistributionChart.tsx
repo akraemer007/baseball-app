@@ -343,11 +343,10 @@ export function StatDistributionSpark({
           <line
             x1={x(leagueMean)}
             x2={x(leagueMean)}
-            y1={midY - 6}
-            y2={midY + 6}
-            stroke="rgba(10, 22, 40, 0.45)"
-            strokeWidth={1}
-            strokeDasharray="2 2"
+            y1={midY - 8}
+            y2={midY + 8}
+            stroke="rgba(10, 22, 40, 0.7)"
+            strokeWidth={1.25}
           />
 
           {/* Non-featured teams: tiny, monochrome, sitting exactly on the

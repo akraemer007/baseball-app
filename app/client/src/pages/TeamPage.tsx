@@ -21,10 +21,15 @@ import {
 } from '../charts/StatDistributionChart';
 import { InfoTip } from '../components/InfoTip';
 
-const CATEGORY_LABELS: Record<'batting' | 'pitching' | 'fielding', string> = {
-  batting: 'Batting — percentile vs. league',
-  pitching: 'Pitching — percentile vs. league',
-  fielding: 'Other — percentile vs. league',
+/** Each title has a short head (shown on every device) and a long tail
+ *  (hidden on phones to save the vertical space a wrap would take). */
+const CATEGORY_TITLES: Record<
+  'batting' | 'pitching' | 'fielding',
+  { head: string; tail: string }
+> = {
+  batting: { head: 'Batting', tail: ' — percentile vs. league' },
+  pitching: { head: 'Pitching', tail: ' — percentile vs. league' },
+  fielding: { head: 'Other', tail: ' — percentile vs. league' },
 };
 
 /**
@@ -182,7 +187,12 @@ export default function TeamPage() {
         if (!rows.length) return null;
         return (
           <div key={cat} className="card">
-            <h3>{CATEGORY_LABELS[cat]}</h3>
+            <h3>
+              {CATEGORY_TITLES[cat].head}
+              <span className="percentile-head-tail">
+                {CATEGORY_TITLES[cat].tail}
+              </span>
+            </h3>
             <div className="percentile-list percentile-list-wide">
               {rows.map((s) => (
                 <PercentileRow
@@ -388,8 +398,8 @@ function PercentileRow({
           )}
           <span className="percentile-row-chevron">▸</span>
         </span>
-        <span className="muted mono">{stat.value}</span>
       </div>
+      <div className="percentile-value muted mono">{stat.value}</div>
       <div className="percentile-spark-wrap">
         {data ? (
           <StatDistributionSpark
