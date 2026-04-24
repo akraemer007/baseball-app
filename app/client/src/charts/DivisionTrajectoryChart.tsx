@@ -12,6 +12,15 @@ interface Props {
    * the rest fade back. Pass null to render all equally.
    */
   highlightTeamId?: string | null;
+  /**
+   * Optional "last year" trajectory for the highlighted team, shown as
+   * a dashed ghost line at lower opacity. The chart's x-scale already
+   * spans the max games across all trajectories, so the ghost just
+   * uses its own {gamesPlayed, wMinusL} points as-is — truncate to
+   * current team's games played upstream if the ghost should only
+   * overlay the current time window.
+   */
+  ghostTrajectory?: TeamTrajectory | null;
   /** Optional external hover setter so the parent can sync with team chips. */
   onHoverTeam?: (teamId: string | null) => void;
 }
@@ -27,12 +36,26 @@ export function DivisionTrajectoryChart({
   trajectories,
   height = 180,
   highlightTeamId = null,
+  ghostTrajectory = null,
   onHoverTeam,
 }: Props) {
   const navigate = useNavigate();
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(400);
   const [internalHover, setInternalHover] = useState<string | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<{
+    teamId: string;
+    pointIdx: number;
+  } | null>(null);
+  // 0 → lines hidden from left to right; 1 → fully drawn. Animated via
+  // CSS transition on stroke-dashoffset so the season appears to sweep
+  // across the card on load (and on division change).
+  const [drawProgress, setDrawProgress] = useState(0);
+  useEffect(() => {
+    setDrawProgress(0);
+    const id = requestAnimationFrame(() => setDrawProgress(1));
+    return () => cancelAnimationFrame(id);
+  }, [division.id]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -55,9 +78,16 @@ export function DivisionTrajectoryChart({
     const innerW = Math.max(40, width - margin.left - margin.right);
     const innerH = Math.max(60, height - margin.top - margin.bottom);
 
-    const maxGames =
+    const maxGamesDiv =
       d3.max(divTrajectories, (d) => d3.max(d.points, (p) => p.gamesPlayed)) ?? 162;
-    const allY = divTrajectories.flatMap((t) => t.points.map((p) => p.wMinusL));
+    const maxGamesGhost = ghostTrajectory
+      ? d3.max(ghostTrajectory.points, (p) => p.gamesPlayed) ?? 0
+      : 0;
+    const maxGames = Math.max(maxGamesDiv, maxGamesGhost);
+    const allY = [
+      ...divTrajectories.flatMap((t) => t.points.map((p) => p.wMinusL)),
+      ...(ghostTrajectory?.points.map((p) => p.wMinusL) ?? []),
+    ];
     const absMax = Math.max(
       3,
       Math.abs(d3.max(allY) ?? 0),
@@ -101,7 +131,7 @@ export function DivisionTrajectoryChart({
     const labelByTeam = new Map(labelRows.map((r) => [r.teamId, r]));
 
     return { margin, innerW, innerH, x, y, yTicks, maxGames, divTrajectories, labelByTeam, LABEL_FS };
-  }, [division, trajectories, width, height]);
+  }, [division, trajectories, width, height, ghostTrajectory]);
 
   if (!chart) {
     return (
@@ -122,6 +152,26 @@ export function DivisionTrajectoryChart({
   const handleHover = (teamId: string | null) => {
     setInternalHover(teamId);
     onHoverTeam?.(teamId);
+    if (teamId === null) setHoverPoint(null);
+  };
+
+  // Track mouse across a team's line, snap to the nearest game by x.
+  const handleMove = (e: React.MouseEvent, traj: TeamTrajectory) => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const plotX = e.clientX - rect.left - margin.left;
+    const gamesTarget = x.invert(plotX);
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < traj.points.length; i++) {
+      const d = Math.abs(traj.points[i].gamesPlayed - gamesTarget);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    setHoverPoint({ teamId: traj.teamId, pointIdx: bestIdx });
   };
 
   // Render non-active teams first so the hovered/highlighted team stacks on top.
@@ -131,8 +181,28 @@ export function DivisionTrajectoryChart({
     return aActive - bActive;
   });
 
+  const tooltipData = (() => {
+    if (!hoverPoint) return null;
+    const traj = divTrajectories.find((t) => t.teamId === hoverPoint.teamId);
+    const p = traj?.points[hoverPoint.pointIdx];
+    if (!traj || !p) return null;
+    const team = division.teams.find((t) => t.id === traj.teamId);
+    const w = (p.gamesPlayed + p.wMinusL) / 2;
+    const l = (p.gamesPlayed - p.wMinusL) / 2;
+    return {
+      abbrev: team?.abbrev ?? traj.teamId,
+      color: team?.color ?? '#8fa3c0',
+      wins: w,
+      losses: l,
+      gamesPlayed: p.gamesPlayed,
+      date: p.date,
+      cx: margin.left + x(p.gamesPlayed),
+      cy: margin.top + y(p.wMinusL),
+    };
+  })();
+
   return (
-    <div ref={wrapRef} style={{ width: '100%', height }}>
+    <div ref={wrapRef} style={{ width: '100%', height, position: 'relative' }}>
       <svg width={width} height={height}>
         <g transform={`translate(${margin.left}, ${margin.top})`}>
           {/* Horizontal reference lines */}
@@ -165,6 +235,25 @@ export function DivisionTrajectoryChart({
             </text>
           ))}
 
+          {/* "Last year" ghost line for the highlighted team, drawn under
+              the live team lines so it sits visually behind them. */}
+          {ghostTrajectory && ghostTrajectory.points.length > 0 && (() => {
+            const team = division.teams.find(
+              (t) => t.id === ghostTrajectory.teamId,
+            );
+            const color = team?.color ?? '#8fa3c0';
+            return (
+              <path
+                d={lineGen(ghostTrajectory.points) ?? undefined}
+                fill="none"
+                stroke={color}
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                opacity={0.45}
+              />
+            );
+          })()}
+
           {/* Team lines + labels (grouped so they're clickable) */}
           {sortedByZ.map((traj) => {
             const team = division.teams.find((t) => t.id === traj.teamId);
@@ -179,6 +268,7 @@ export function DivisionTrajectoryChart({
                 style={{ cursor: 'pointer' }}
                 onMouseEnter={() => handleHover(traj.teamId)}
                 onMouseLeave={() => handleHover(null)}
+                onMouseMove={(e) => handleMove(e, traj)}
                 onClick={() => navigate(`/team/${traj.teamId}`)}
               >
                 {/* Wide invisible hit-line for easy hovering */}
@@ -188,14 +278,37 @@ export function DivisionTrajectoryChart({
                   stroke="transparent"
                   strokeWidth={14}
                 />
-                {/* Visible line */}
+                {/* Crosshair dot at the hovered game */}
+                {hoverPoint && hoverPoint.teamId === traj.teamId && (() => {
+                  const p = traj.points[hoverPoint.pointIdx];
+                  if (!p) return null;
+                  return (
+                    <circle
+                      cx={x(p.gamesPlayed)}
+                      cy={y(p.wMinusL)}
+                      r={4}
+                      fill={color}
+                      stroke="#0a1628"
+                      strokeWidth={1.5}
+                      pointerEvents="none"
+                    />
+                  );
+                })()}
+                {/* Visible line. pathLength=1 normalizes stroke-dasharray
+                    so we can animate stroke-dashoffset from 1 → 0 to
+                    draw the line left-to-right regardless of its
+                    actual length. */}
                 <path
                   d={lineGen(traj.points) ?? undefined}
                   fill="none"
                   stroke={color}
                   strokeWidth={isActive ? 3.4 : 2.2}
                   strokeOpacity={isDimmed ? 0.22 : 0.98}
+                  pathLength={1}
                   style={{
+                    strokeDasharray: 1,
+                    strokeDashoffset: 1 - drawProgress,
+                    transition: 'stroke-dashoffset 900ms ease-out',
                     filter: isActive ? `drop-shadow(0 0 4px ${color})` : undefined,
                   }}
                 />
@@ -243,6 +356,34 @@ export function DivisionTrajectoryChart({
           </text>
         </g>
       </svg>
+
+      {tooltipData && (
+        <div
+          className="stat-dist-tooltip"
+          style={{
+            left: `${tooltipData.cx}px`,
+            top: `${tooltipData.cy - 10}px`,
+          }}
+        >
+          <div
+            className="mono"
+            style={{ color: tooltipData.color, fontWeight: 700 }}
+          >
+            {tooltipData.abbrev} {tooltipData.wins}-{tooltipData.losses}
+          </div>
+          <div className="mono sub">
+            {formatTooltipDate(tooltipData.date)} · game {tooltipData.gamesPlayed}
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function formatTooltipDate(iso: string): string {
+  // Expect 'YYYY-MM-DD'. Avoid timezone drift by parsing the parts directly.
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }

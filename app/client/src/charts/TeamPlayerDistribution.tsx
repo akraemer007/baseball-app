@@ -1,6 +1,7 @@
-import { useMemo, useRef, useEffect, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
 import { savantPlayerUrl } from '../lib/savant';
+import { formatStat } from '../lib/stats';
 import type { TeamPlayerDistributionEntry } from '@shared/types';
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
   /** Team color used for every dot (all players on the same team). */
   teamColor: string;
   side: 'hitter' | 'pitcher';
+  statKey?: string;
   /** Override the computed [min, max] value-axis domain. Used to share the
    *  x-scale with the team-level chart above so the team's tick lines up
    *  at the same x in both charts. */
@@ -31,6 +33,7 @@ export function TeamPlayerDistribution({
   teamValue,
   teamColor,
   side,
+  statKey,
   xDomain,
   height = 130,
 }: Props) {
@@ -48,8 +51,21 @@ export function TeamPlayerDistribution({
     return () => obs.disconnect();
   }, []);
 
+  // Belt-and-suspenders measurement. The ResizeObserver can miss fires
+  // when this chart mounts into a container whose width changes during
+  // the same render (e.g. the parent row expanding inside a CSS multi-
+  // column layout), leaving the SVG stuck at its initial state width
+  // and overflowing the column. A sync measure on every render corrects
+  // any drift before paint.
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measured = Math.max(280, el.clientWidth);
+    if (measured !== width) setWidth(measured);
+  });
+
   const layout = useMemo(() => {
-    const margin = { top: 22, right: 24, bottom: 36, left: 24 };
+    const margin = { top: 22, right: 8, bottom: 36, left: 8 };
     const innerW = Math.max(60, width - margin.left - margin.right);
     const innerH = Math.max(60, height - margin.top - margin.bottom);
     let domain: [number, number];
@@ -76,7 +92,7 @@ export function TeamPlayerDistribution({
   // Alternate labels above / below the baseline to reduce collisions.
   const labelSide = (i: number): 'above' | 'below' => (i % 2 === 0 ? 'above' : 'below');
 
-  const teamValueLabel = teamValue.toFixed(teamValue < 1 ? 3 : 2);
+  const teamValueLabel = formatStat(teamValue, statKey);
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height, position: 'relative' }}>
@@ -187,11 +203,11 @@ export function TeamPlayerDistribution({
             top: `${margin.top + midY - 60}px`,
           }}
         >
-          <div className="mono" style={{ color: '#ffffff', fontWeight: 700 }}>
+          <div className="mono" style={{ fontWeight: 700 }}>
             {hoveredEntry.playerName}
           </div>
-          <div className="mono" style={{ fontSize: '0.7rem', color: '#cbd4e0' }}>
-            {hoveredEntry.value} ·{' '}
+          <div className="mono sub">
+            {formatStat(hoveredEntry.value, statKey)} ·{' '}
             {side === 'hitter'
               ? `${hoveredEntry.playingTime} AB`
               : `${hoveredEntry.playingTime} IP`}

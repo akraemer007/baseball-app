@@ -574,21 +574,31 @@ table.stat-table td.top-performer {
   border-radius: 4px;
   margin-top: 0.5rem;
   padding: 0.25rem 0.5rem;
+  /* Span the row's full grid width (the row has grid-template-columns:
+     1fr auto). min-width: 0 stops the chart's initial-render SVG from
+     stretching the 1fr column wider than the parent column. */
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .stat-dist-tooltip {
   position: absolute;
   transform: translate(-50%, -100%);
-  background: #0a1628;
-  color: #e8eef7;
-  border: 1px solid #0a1628;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-size: 0.75rem;
   pointer-events: none;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 12px rgba(10, 22, 40, 0.15);
   white-space: nowrap;
   z-index: 5;
+}
+
+.stat-dist-tooltip .sub {
+  color: var(--text-dim);
+  font-size: 0.7rem;
 }
 
 .division-header {
@@ -674,11 +684,9 @@ table.stat-table td.top-performer {
   margin-bottom: 0.75rem;
 }
 
-/* When a row is expanded the full StatDistributionChart renders under
-   it — span all columns so the chart gets the card's full width. */
-.percentile-list-wide > .percentile-row-expandable[data-open='true'] {
-  column-span: all;
-}
+/* Expanded rows stay in their column so clicking a row in column 2
+   doesn't yank the content across the card. The chart renders at
+   roughly half the card's width on desktop, full width on phones. */
 
 @media (max-width: 720px) {
   .percentile-list-wide {
@@ -728,18 +736,70 @@ table.stat-table td.top-performer {
   .percentile-foot {
     display: none;
   }
-  /* Hide the "— percentile vs. league" tail in category headers. */
-  .percentile-head-tail {
-    display: none;
-  }
 }
 
-/* Host for the StatDistributionSpark mini strip-plot. Fixed height so
-   the row grid doesn't reflow when the query resolves from the
-   fallback bar to the SVG spark. */
+/* Stat-card title row: category name on the left, scope toggle pinned
+   to the right. Shared state means flipping the toggle on any card
+   re-scopes all three. */
+.stat-card-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.4rem;
+}
+
+.scope-toggle {
+  display: inline-flex;
+  font-size: 0.72rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.scope-toggle > button {
+  padding: 0.2rem 0.65rem;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: inherit;
+}
+
+.scope-toggle > button[data-active='true'] {
+  background: var(--text);
+  color: var(--bg);
+}
+
+/* Host for the row strip-plot. Height flexes between the folded (36px)
+   and expanded (140px) sizes with a transition so the chart grows in
+   place instead of snapping. */
 .percentile-spark-wrap {
   position: relative;
   height: 36px;
+  transition: height 280ms ease;
+}
+
+.percentile-row-expandable[data-open='true'] > .percentile-spark-wrap {
+  height: 140px;
+}
+
+/* Smooth spark↔full evolution for the StatDistributionChart. Every
+   visual property we flip when `detail` changes gets the same timing,
+   so dots grow/jitter/recolor in unison with labels and ticks
+   crossfading. */
+.stat-dist-chart g,
+.stat-dist-chart circle,
+.stat-dist-chart line,
+.stat-dist-chart text {
+  transition:
+    transform 280ms ease,
+    opacity 280ms ease,
+    r 280ms ease,
+    fill 280ms ease,
+    stroke 280ms ease,
+    stroke-width 280ms ease;
 }
 
 .percentile-foot {
@@ -771,6 +831,39 @@ table.stat-table td.top-performer {
   padding: 0.25rem 0.5rem;
   font-family: var(--mono);
   font-size: 0.85rem;
+}
+
+.date-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.date-nav-btn {
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 1.8rem;
+  height: 1.8rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: var(--mono);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.date-nav-btn:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.date-nav-btn:disabled {
+  color: var(--text-dim);
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .proj-grid {

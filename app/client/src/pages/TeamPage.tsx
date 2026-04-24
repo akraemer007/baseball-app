@@ -16,12 +16,10 @@ import type {
   TeamResponse,
 } from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
-import {
-  StatDistributionChart,
-  StatDistributionSpark,
-} from '../charts/StatDistributionChart';
+import { StatDistributionChart } from '../charts/StatDistributionChart';
 import { TeamPlayerDistribution } from '../charts/TeamPlayerDistribution';
 import { InfoTip } from '../components/InfoTip';
+import { formatStat, formatSlashStat } from '../lib/stats';
 
 /** Stats that are counting totals rather than rates. Team-level and
  *  per-player values live on different scales (team hits ~600, player
@@ -35,15 +33,10 @@ const SUM_STAT_KEYS = new Set([
   'strikeouts_pitching_total',
 ]);
 
-/** Each title has a short head (shown on every device) and a long tail
- *  (hidden on phones to save the vertical space a wrap would take). */
-const CATEGORY_TITLES: Record<
-  'batting' | 'pitching' | 'fielding',
-  { head: string; tail: string }
-> = {
-  batting: { head: 'Batting', tail: ' — percentile vs. league' },
-  pitching: { head: 'Pitching', tail: ' — percentile vs. league' },
-  fielding: { head: 'Other', tail: ' — percentile vs. league' },
+const CATEGORY_TITLES: Record<'batting' | 'pitching' | 'fielding', string> = {
+  batting: 'Batting',
+  pitching: 'Pitching',
+  fielding: 'Other',
 };
 
 /**
@@ -104,6 +97,8 @@ export default function TeamPage() {
   const navigate = useNavigate();
   const season = new Date().getUTCFullYear();
   const [expandedStat, setExpandedStat] = useState<string | null>(null);
+  const [trajectoryMode, setTrajectoryMode] = useState<'division' | 'yoy'>('division');
+  const [statScope, setStatScope] = useState<'mlb' | 'league'>('mlb');
   const { primaryTeam, secondaryTeam } = usePreferences();
 
   const teamQ = useQuery<TeamResponse>({
@@ -116,6 +111,14 @@ export default function TeamPage() {
     queryFn: () => apiGet<LeagueResponse>(`/api/league/divisions?season=${season}`),
   });
 
+  const lastYearQ = useQuery<LeagueResponse>({
+    queryKey: ['league', season - 1],
+    queryFn: () =>
+      apiGet<LeagueResponse>(`/api/league/divisions?season=${season - 1}`),
+    enabled: trajectoryMode === 'yoy',
+    staleTime: 5 * 60 * 1000,
+  });
+
   const teamDivision = useMemo(() => {
     if (!leagueQ.data) return null;
     return (
@@ -124,6 +127,19 @@ export default function TeamPage() {
       ) ?? null
     );
   }, [leagueQ.data, teamId]);
+
+  // abbrev → league ('AL' | 'NL') map used to filter stat distributions
+  // to just this team's league when the scope toggle is flipped.
+  const teamLeagueMap = useMemo(() => {
+    const m = new Map<string, 'AL' | 'NL'>();
+    if (!leagueQ.data) return m;
+    for (const d of leagueQ.data.divisions) {
+      for (const t of d.teams) m.set(t.id.toUpperCase(), d.league);
+    }
+    return m;
+  }, [leagueQ.data]);
+
+  const teamLeague = teamDivision?.league ?? null;
 
   if (teamQ.isLoading)
     return (
@@ -168,7 +184,7 @@ export default function TeamPage() {
         <span className="mono" style={{ fontSize: '1.1rem', color: 'var(--text)' }}>
           {record.wins}-{record.losses}
         </span>{' '}
-        ({record.winPct.toFixed(3)}) · GB{' '}
+        ({formatSlashStat(record.winPct)}) · GB{' '}
         <span className="mono">{formatGB(record.gamesBehind)}</span>
         {' '}· Run diff{' '}
         <span className="mono">
@@ -182,17 +198,84 @@ export default function TeamPage() {
         </span>
       </p>
 
-      {teamDivision && leagueQ.data && (
-        <div className="card">
-          <h3>Season trajectory ({teamDivision.name})</h3>
-          <DivisionTrajectoryChart
-            division={teamDivision}
-            trajectories={leagueQ.data.trajectory}
-            highlightTeamId={team.id}
-            height={240}
-          />
-        </div>
-      )}
+      {teamDivision && leagueQ.data && (() => {
+        const currentTraj = leagueQ.data.trajectory.find((t) => t.teamId === team.id);
+        const gamesSoFar = currentTraj?.points.length ?? 0;
+        const lastYearTraj = lastYearQ.data?.trajectory.find((t) => t.teamId === team.id);
+        const isYoy = trajectoryMode === 'yoy';
+        const ghost = isYoy && lastYearTraj
+          ? { ...lastYearTraj, points: lastYearTraj.points.slice(0, gamesSoFar) }
+          : null;
+        const trajectoriesForChart = isYoy
+          ? (currentTraj ? [currentTraj] : [])
+          : leagueQ.data.trajectory;
+        return (
+          <div className="card">
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.5rem',
+              }}
+            >
+              <h3 style={{ margin: 0 }}>
+                {isYoy
+                  ? `Season trajectory — ${season} vs ${season - 1}`
+                  : `Season trajectory (${teamDivision.name})`}
+              </h3>
+              <div
+                className="mono"
+                style={{ display: 'inline-flex', fontSize: '0.75rem', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setTrajectoryMode('division')}
+                  style={{
+                    padding: '0.25rem 0.7rem',
+                    background: trajectoryMode === 'division' ? 'var(--text)' : 'transparent',
+                    color: trajectoryMode === 'division' ? 'var(--bg)' : 'var(--text-dim)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Division
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTrajectoryMode('yoy')}
+                  style={{
+                    padding: '0.25rem 0.7rem',
+                    background: trajectoryMode === 'yoy' ? 'var(--text)' : 'transparent',
+                    color: trajectoryMode === 'yoy' ? 'var(--bg)' : 'var(--text-dim)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  vs {season - 1}
+                </button>
+              </div>
+            </div>
+            <DivisionTrajectoryChart
+              division={teamDivision}
+              trajectories={trajectoriesForChart}
+              highlightTeamId={team.id}
+              ghostTrajectory={ghost}
+              height={240}
+            />
+            {isYoy && lastYearQ.isLoading && (
+              <p className="muted" style={{ fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+                Loading {season - 1} trajectory…
+              </p>
+            )}
+            {isYoy && lastYearQ.data && !lastYearTraj && (
+              <p className="muted" style={{ fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+                No {season - 1} data for {team.abbrev}.
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {(['batting', 'pitching', 'fielding'] as const).map((cat) => {
         const rows = percentileStats
@@ -202,13 +285,34 @@ export default function TeamPage() {
               (STAT_ORDER[a.statKey] ?? 999) - (STAT_ORDER[b.statKey] ?? 999),
           );
         if (!rows.length) return null;
+        const scopeTag = statScope === 'league' && teamLeague ? teamLeague : 'MLB';
         return (
           <div key={cat} className="card">
-            <h3>
-              {CATEGORY_TITLES[cat].head}
-              <span className="percentile-head-tail">
-                {CATEGORY_TITLES[cat].tail}
+            <h3 className="stat-card-title">
+              <span>
+                {CATEGORY_TITLES[cat]} vs.{' '}
+                <span className="muted mono" style={{ fontWeight: 500 }}>
+                  {scopeTag}
+                </span>
               </span>
+              {teamLeague && (
+                <div className="scope-toggle mono">
+                  <button
+                    type="button"
+                    onClick={() => setStatScope('mlb')}
+                    data-active={statScope === 'mlb'}
+                  >
+                    All MLB
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatScope('league')}
+                    data-active={statScope === 'league'}
+                  >
+                    {teamLeague}
+                  </button>
+                </div>
+              )}
             </h3>
             <div className="percentile-list percentile-list-wide">
               {rows.map((s) => (
@@ -220,6 +324,9 @@ export default function TeamPage() {
                   currentTeamAbbrev={team.id}
                   primaryTeamAbbrev={primaryTeam}
                   secondaryTeamAbbrev={secondaryTeam}
+                  scope={statScope}
+                  teamLeague={teamLeague}
+                  teamLeagueMap={teamLeagueMap}
                   isOpen={expandedStat === s.statKey}
                   onToggle={() =>
                     setExpandedStat(expandedStat === s.statKey ? null : s.statKey)
@@ -370,6 +477,9 @@ function PercentileRow({
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
+  scope,
+  teamLeague,
+  teamLeagueMap,
   isOpen,
   onToggle,
 }: {
@@ -379,6 +489,9 @@ function PercentileRow({
   currentTeamAbbrev: string;
   primaryTeamAbbrev: string;
   secondaryTeamAbbrev: string;
+  scope: 'mlb' | 'league';
+  teamLeague: 'AL' | 'NL' | null;
+  teamLeagueMap: Map<string, 'AL' | 'NL'>;
   isOpen: boolean;
   onToggle: () => void;
 }) {
@@ -392,6 +505,35 @@ function PercentileRow({
         `/api/league/stat-distribution?stat=${encodeURIComponent(stat.statKey)}&season=${season}`,
       ),
   });
+
+  // When "NL"/"AL" scope is active, filter the 30-team response to the
+  // team's league (15 teams), recompute the reference mean as the
+  // unweighted mean of the remaining team values, and re-rank within
+  // the filtered set. Good enough for the strip-plot comparison.
+  const scopedData = useMemo(() => {
+    if (!data) return null;
+    if (scope === 'mlb' || !teamLeague) return data;
+    const filtered = data.entries.filter(
+      (e) => teamLeagueMap.get(e.teamAbbrev.toUpperCase()) === teamLeague,
+    );
+    if (!filtered.length) return data;
+    const leagueMean =
+      filtered.reduce((acc, e) => acc + e.value, 0) / filtered.length;
+    // Re-rank (1 = best) by direction of the stat.
+    const sorted = [...filtered].sort((a, b) =>
+      data.lowerIsBetter ? a.value - b.value : b.value - a.value,
+    );
+    const rankByAbbrev = new Map(sorted.map((e, i) => [e.teamAbbrev, i + 1]));
+    return {
+      ...data,
+      entries: filtered.map((e) => ({
+        ...e,
+        rank: rankByAbbrev.get(e.teamAbbrev) ?? e.rank,
+      })),
+      leagueMean,
+    };
+  }, [data, scope, teamLeague, teamLeagueMap]);
+  const scopeLabel = scope === 'league' && teamLeague ? teamLeague : 'MLB';
 
   // Second chart: this team's players. Prefetched on row mount (not
   // gated on `isOpen`) so the expand click is instant — the 30-team
@@ -435,89 +577,96 @@ function PercentileRow({
           <span className="percentile-row-chevron">▸</span>
         </span>
       </div>
-      <div className="percentile-value muted mono">{stat.value}</div>
+      <div className="percentile-value muted mono">{formatStat(stat.value, stat.statKey)}</div>
       <div className="percentile-spark-wrap">
-        {data && (
-          <StatDistributionSpark
-            entries={data.entries}
-            lowerIsBetter={data.lowerIsBetter}
-            leagueMean={data.leagueMean}
-            currentTeamAbbrev={currentTeamAbbrev}
-            primaryTeamAbbrev={primaryTeamAbbrev}
-            secondaryTeamAbbrev={secondaryTeamAbbrev}
-          />
-        )}
+        {scopedData && (() => {
+          // Unify the x-scale across the team chart and the per-player
+          // chart below so dots at the same value land at the same x in
+          // both. Rate stats only — for sum stats (team total vs per-
+          // player total) the magnitudes differ by 1-2 orders so each
+          // chart keeps its own domain. Computed at this level (not inside
+          // the isOpen block) so the folded spark uses the same domain as
+          // the expanded full chart — no horizontal jump on expand.
+          const players = playerDistQ.data;
+          const isSumStat = SUM_STAT_KEYS.has(stat.statKey);
+          let sharedDomain: [number, number] | undefined;
+          if (players && !isSumStat) {
+            const all: number[] = [
+              ...scopedData.entries.map((e) => e.value),
+              ...players.entries.map((e) => e.value),
+              players.teamValue,
+            ];
+            const minV = Math.min(...all);
+            const maxV = Math.max(...all);
+            const pad = (maxV - minV) * 0.08 || 0.1;
+            sharedDomain = [minV - pad, maxV + pad];
+          }
+          return (
+            <StatDistributionChart
+              entries={scopedData.entries}
+              lowerIsBetter={scopedData.lowerIsBetter}
+              leagueMean={scopedData.leagueMean}
+              statKey={stat.statKey}
+              scopeLabel={scopeLabel}
+              currentTeamAbbrev={currentTeamAbbrev}
+              primaryTeamAbbrev={primaryTeamAbbrev}
+              secondaryTeamAbbrev={secondaryTeamAbbrev}
+              xDomain={sharedDomain}
+              detail={isOpen ? 'full' : 'spark'}
+            />
+          );
+        })()}
       </div>
       <div className="percentile-foot muted mono">
         {stat.leagueRankPercentile}th pctl
       </div>
-      {isOpen && data && (
-        <div
-          className="stat-dist-container"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {(() => {
-            // For rate stats, unify the x-scale across the team chart + player
-            // chart so the team's value lines up at the same x in both. For
-            // sum stats (team total vs per-player total) the magnitudes differ
-            // by 1-2 orders, so each chart keeps its own domain.
-            const players = playerDistQ.data;
-            const isSumStat = SUM_STAT_KEYS.has(stat.statKey);
-            let sharedDomain: [number, number] | undefined;
-            if (players && !isSumStat) {
-              const all: number[] = [
-                ...data.entries.map((e) => e.value),
-                ...players.entries.map((e) => e.value),
-                players.teamValue,
-              ];
-              const minV = Math.min(...all);
-              const maxV = Math.max(...all);
-              const pad = (maxV - minV) * 0.08 || 0.1;
-              sharedDomain = [minV - pad, maxV + pad];
-            }
-            return (
-              <>
-                <StatDistributionChart
-                  entries={data.entries}
-                  lowerIsBetter={data.lowerIsBetter}
-                  leagueMean={data.leagueMean}
-                  currentTeamAbbrev={currentTeamAbbrev}
-                  primaryTeamAbbrev={primaryTeamAbbrev}
-                  secondaryTeamAbbrev={secondaryTeamAbbrev}
-                  xDomain={sharedDomain}
-                  height={160}
-                />
-                {players && players.entries.length > 0 && (
-                  <>
-                    <div
-                      className="muted mono"
-                      style={{
-                        fontSize: '0.7rem',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                        marginTop: '0.5rem',
-                        marginBottom: '-0.25rem',
-                      }}
-                    >
-                      {currentTeamAbbrev}{' '}
-                      {players.side === 'hitter' ? 'hitters' : 'pitchers'} ·
-                      qualifying
-                    </div>
-                    <TeamPlayerDistribution
-                      entries={players.entries}
-                      lowerIsBetter={players.lowerIsBetter}
-                      teamValue={players.teamValue}
-                      teamColor={teamColor}
-                      side={players.side}
-                      xDomain={sharedDomain}
-                    />
-                  </>
-                )}
-              </>
-            );
-          })()}
-        </div>
-      )}
+      {isOpen && scopedData && (() => {
+        const players = playerDistQ.data;
+        const isSumStat = SUM_STAT_KEYS.has(stat.statKey);
+        let sharedDomain: [number, number] | undefined;
+        if (players && !isSumStat) {
+          const all: number[] = [
+            ...scopedData.entries.map((e) => e.value),
+            ...players.entries.map((e) => e.value),
+            players.teamValue,
+          ];
+          const minV = Math.min(...all);
+          const maxV = Math.max(...all);
+          const pad = (maxV - minV) * 0.08 || 0.1;
+          sharedDomain = [minV - pad, maxV + pad];
+        }
+        if (!players || players.entries.length === 0) return null;
+        return (
+          <div
+            className="stat-dist-container"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="muted mono"
+              style={{
+                fontSize: '0.7rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                marginTop: '0.25rem',
+                marginBottom: '-0.25rem',
+              }}
+            >
+              {currentTeamAbbrev}{' '}
+              {players.side === 'hitter' ? 'hitters' : 'pitchers'} ·
+              qualifying
+            </div>
+            <TeamPlayerDistribution
+              entries={players.entries}
+              lowerIsBetter={players.lowerIsBetter}
+              teamValue={players.teamValue}
+              teamColor={teamColor}
+              side={players.side}
+              statKey={stat.statKey}
+              xDomain={sharedDomain}
+            />
+          </div>
+        );
+      })()}
     </div>
   );
 }

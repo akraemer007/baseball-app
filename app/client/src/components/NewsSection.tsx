@@ -19,19 +19,28 @@ function formatGameType(t: string): string {
   }
 }
 
-/** "Yesterday" in baseball-scoreboard terms (America/New_York), not UTC.
- *  At 9 PM ET on 4/23 a UTC-yesterday would report 4/23 — but the user
- *  considers today 4/23 and yesterday 4/22. */
-function yesterdayIso(): string {
-  const todayEt = new Intl.DateTimeFormat('en-CA', {
+function todayIsoEt(): string {
+  return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-  const d = new Date(`${todayEt}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
+}
+
+/** "Yesterday" in baseball-scoreboard terms (America/New_York), not UTC.
+ *  At 9 PM ET on 4/23 a UTC-yesterday would report 4/23 — but the user
+ *  considers today 4/23 and yesterday 4/22. */
+function yesterdayIso(): string {
+  return shiftIsoDate(todayIsoEt(), -1);
+}
+
+/** Add `delta` days to a YYYY-MM-DD string. Parses the components
+ *  directly so there's no timezone drift around DST. */
+function shiftIsoDate(iso: string, delta: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d + delta));
+  return date.toISOString().slice(0, 10);
 }
 
 /**
@@ -220,16 +229,35 @@ export default function NewsSection() {
 
       <div
         className="news-date-bar"
-        style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}
+        style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}
       >
         <h2 style={{ margin: 0 }}>Recaps</h2>
-        <label className="muted" style={{ fontSize: '0.85rem' }}>Date:</label>
-        <input
-          type="date"
-          className="date-input"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
+        <div className="date-nav">
+          <button
+            type="button"
+            className="date-nav-btn"
+            aria-label="Previous day"
+            onClick={() => setDate(shiftIsoDate(date, -1))}
+          >
+            ‹
+          </button>
+          <input
+            type="date"
+            className="date-input"
+            value={date}
+            max={todayIsoEt()}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          <button
+            type="button"
+            className="date-nav-btn"
+            aria-label="Next day"
+            onClick={() => setDate(shiftIsoDate(date, 1))}
+            disabled={date >= todayIsoEt()}
+          >
+            ›
+          </button>
+        </div>
       </div>
       {recapsQ.isLoading && <p className="muted">Loading recaps…</p>}
       {recapsQ.data && recapsQ.data.recaps.length === 0 && (
