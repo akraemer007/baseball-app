@@ -574,6 +574,11 @@ table.stat-table td.top-performer {
   border-radius: 4px;
   margin-top: 0.5rem;
   padding: 0.25rem 0.5rem;
+  /* Span the row's full grid width (the row has grid-template-columns:
+     1fr auto). min-width: 0 stops the chart's initial-render SVG from
+     stretching the 1fr column wider than the parent column. */
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .stat-dist-tooltip {
@@ -674,11 +679,9 @@ table.stat-table td.top-performer {
   margin-bottom: 0.75rem;
 }
 
-/* When a row is expanded the full StatDistributionChart renders under
-   it — span all columns so the chart gets the card's full width. */
-.percentile-list-wide > .percentile-row-expandable[data-open='true'] {
-  column-span: all;
-}
+/* Expanded rows stay in their column so clicking a row in column 2
+   doesn't yank the content across the card. The chart renders at
+   roughly half the card's width on desktop, full width on phones. */
 
 @media (max-width: 720px) {
   .percentile-list-wide {

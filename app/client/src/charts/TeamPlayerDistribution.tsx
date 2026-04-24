@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
 import { savantPlayerUrl } from '../lib/savant';
 import { formatStat } from '../lib/stats';
@@ -51,8 +51,21 @@ export function TeamPlayerDistribution({
     return () => obs.disconnect();
   }, []);
 
+  // Belt-and-suspenders measurement. The ResizeObserver can miss fires
+  // when this chart mounts into a container whose width changes during
+  // the same render (e.g. the parent row expanding inside a CSS multi-
+  // column layout), leaving the SVG stuck at its initial state width
+  // and overflowing the column. A sync measure on every render corrects
+  // any drift before paint.
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measured = Math.max(280, el.clientWidth);
+    if (measured !== width) setWidth(measured);
+  });
+
   const layout = useMemo(() => {
-    const margin = { top: 22, right: 24, bottom: 36, left: 24 };
+    const margin = { top: 22, right: 28, bottom: 36, left: 28 };
     const innerW = Math.max(60, width - margin.left - margin.right);
     const innerH = Math.max(60, height - margin.top - margin.bottom);
     let domain: [number, number];
