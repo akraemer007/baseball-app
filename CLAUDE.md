@@ -63,9 +63,16 @@ databricks apps logs ak-baseball-dev -p fe-vm-production-forecasting
 Not auto-loaded. Pull in with `@filename.md` or Read when the topic
 comes up.
 
+- `BACKLOG.md` — dispatchable backlog of architecture + feature
+  tickets, with lane/blocks/agent-prompt per ticket. Read when user
+  wants to pick up the next piece of work, or asks "what's in the
+  queue?", or is planning a parallel-agents-in-worktrees session.
+- `CONVENTIONS.md` — type-sharing + parallel-worktree etiquette.
+  Referenced by BACKLOG.md tickets. Not present yet; gets created by
+  ARCH-4.
 - `rebuild_without_databricks.md` — migration plan (Fly + Neon + R2 +
   Anthropic). Read when cost, hosting alternatives, or porting the
   pipeline comes up.
-- `make_it_impressive.md` — feature brainstorm (matchup preview,
-  Statcast ingest, xwOBA, WPA charts). Read when "what should I build
-  next?" comes up.
+- `make_it_impressive.md` — original feature brainstorm (kept for
+  history). `BACKLOG.md` supersedes it for execution; read this only
+  if the backlog rationale is unclear.
