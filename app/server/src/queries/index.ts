@@ -265,6 +265,13 @@ const PLAYER_STAT_SPECS: Record<
   hr_total:                    { side: 'hitter',  label: 'HR',            valueExpr: 'p.home_runs',                                                lowerIsBetter: false },
   walks_total:                 { side: 'hitter',  label: 'BB',            valueExpr: 'p.walks',                                                    lowerIsBetter: false },
   era:                         { side: 'pitcher', label: 'ERA',           valueExpr: 'p.era',                                                      lowerIsBetter: true  },
+  fip:                         { side: 'pitcher', label: 'FIP',
+    // (13*HR + 3*BB - 2*K) / IP + league-ish constant (~3.10). Same
+    // formula as the team-level FIP in gold; constant drifts ~0.1 from
+    // the exact dynamic value but the rank order + relative distances
+    // are identical, which is what the chart cares about.
+    valueExpr: '(13.0 * p.home_runs_allowed + 3.0 * p.walks_p - 2.0 * p.strikeouts_p) / NULLIF(p.innings_pitched, 0) + 3.10',
+    lowerIsBetter: true  },
   k_per_9:                     { side: 'pitcher', label: 'K/9',           valueExpr: 'p.strikeouts_p * 9.0 / NULLIF(p.innings_pitched, 0)',        lowerIsBetter: false },
   strikeouts_pitching_total:   { side: 'pitcher', label: 'K (pitching)',  valueExpr: 'p.strikeouts_p',                                             lowerIsBetter: false },
 };
