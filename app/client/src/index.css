@@ -833,6 +833,39 @@ table.stat-table td.top-performer {
   font-size: 0.85rem;
 }
 
+.date-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.date-nav-btn {
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 1.8rem;
+  height: 1.8rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: var(--mono);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.date-nav-btn:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.date-nav-btn:disabled {
+  color: var(--text-dim);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .proj-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
