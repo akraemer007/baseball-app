@@ -58,6 +58,34 @@ databricks apps logs ak-baseball-dev -p fe-vm-production-forecasting
 - **Databricks CLI ≥ 0.298.0** required — older versions fail deploy
   with `openpgp: key expired`.
 
+## Pipeline portability constraints
+
+We keep using Databricks Asset Bundles (DAB) for orchestration and
+deployment today, but we intend to migrate off Databricks eventually
+(see `rebuild_without_databricks.md`). To keep that option cheap:
+
+- **Python jobs should be portable.** Prefer plain `pandas`, `psycopg`,
+  `httpx`, plain SQL. Do NOT reach for `SparkSession`, `dbutils`, Delta-
+  specific APIs, or `MERGE INTO` when a plain `INSERT ... ON CONFLICT`
+  would work. If a job legitimately needs Spark (e.g. a 100M-row
+  aggregation), call it out in a comment so the migration pass knows
+  it's a deliberate choice and plans for it.
+- **SQL should run on Postgres.** No `STRUCT`, no `MAP`, no lateral
+  views. Window functions and CTEs are fine. `build_gold.sql` is the
+  biggest offender here; any new gold logic should stay in the subset
+  that both Databricks SQL and Postgres accept.
+- **Storage assumptions:** bronze = raw JSON payloads (today in UC,
+  tomorrow in object storage). Silver/gold = structured tables (today
+  in UC Delta, tomorrow in Postgres). Writing SQL that assumes Delta
+  time travel, OPTIMIZE, or VACUUM locks us in.
+- **What IS OK to rely on:** DAB YAML for scheduling, the Databricks
+  CLI for deploys, and UC as the storage backend. These are the
+  orchestration layer; we expect to replace them wholesale but the
+  job code doesn't care who's calling it.
+
+The rule of thumb: *a new pipeline job should be runnable against a
+local Postgres with ~50 lines of wrapper changes, not a rewrite.*
+
 ## Reference docs
 
 Not auto-loaded. Pull in with `@filename.md` or Read when the topic

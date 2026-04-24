@@ -22,52 +22,42 @@ worktree. The brainstorm archive lives at `make_it_impressive.md`.
 
 ---
 
-## Open questions (resolve before running dependent tickets)
+## Open questions — resolved
 
-These are my best guesses with a recommendation — say yes / no /
-amend for each.
+All 8 questions from the brainstorm pass have been answered. Record:
 
-1. **Pythagorean expected record (B.1).** Recommendation: inline on
-   team header as `"55-45 (expected 58-42)"`. ~3 lines SQL + 1 line
-   JSX. If we'd need a whole card, skip. **Accept inline?** → will
-   promote to ticket FEAT-17 once confirmed.
+1. **Pythagorean expected record.** ✅ Inline on team header.
+   Promoted to **FEAT-17** (now unblocked, see below).
+2. **"You are here" tick.** ✅ Dropped. Listed under `Scope
+   boundary`.
+3. **Interest chips on recap cards.** ✅ Already shipped
+   (`NewsSection.tsx:328-344`). Ticket FEAT-11 closed as done.
+4. **E.3 zoom.** ✅ Trajectory window (drag-to-select a date
+   range; strip plots re-compute using games in that window).
+   Drafted as **FEAT-18** (unblocked, see below).
+5. **Logos for primary-team theming.** ✅ Team-color tints only.
+   FEAT-10 ticket body was already written for this — no edits.
+6. **News scraping / LLM web-search.** ✅ Deferred to phase 2.
+   Listed under `Deferred ideas`.
+7. **Team roster view.** ✅ Deferred placeholder FEAT-16 stays.
+8. **Statcast ingest route.** ✅ Direct Baseball Savant endpoint
+   (CSV or JSON). PIPE-1 ticket body was already written for this
+   path — no edits.
 
-2. **"You are here" tick (D.1).** You're right; line always ends at
-   today. **Dropping.** Confirm.
+### Pipeline portability constraint (carries through all pipeline + derivation tickets)
 
-3. **Interest chips on recap cards (D.6).** Verified:
-   `NewsSection.tsx:328-330` already renders a game-type pill
-   (WALK-OFF / COMEBACK / etc.) and interest score. The interest
-   classifier (`jobs/recaps/interest.py`) picks ONE label via an
-   `elif` chain, so the current UI is faithful to the data.
-   **Already shipped, no ticket.** If you want multi-label (e.g. a
-   game is *both* walkoff + rivalry), that needs pipeline work —
-   noted in `Deferred ideas` below.
+Per `CLAUDE.md § Pipeline portability constraints`, every pipeline
+ticket must produce code that's easy to migrate off Databricks to
+Postgres + object storage later. Concretely:
 
-4. **E.3 zoom ("…enable the ability to zoom in on…").** Sentence
-   cut off. Zoom into *what*? Trajectory window? Single month? A
-   specific game's WPA arc? I won't invent intent; once you clarify
-   I'll draft the ticket.
+- Prefer plain Python (pandas / psycopg / httpx) over Spark APIs.
+- SQL should run on Postgres — no `STRUCT`, `MAP`, Delta-only
+  features, or `MERGE INTO` when `INSERT … ON CONFLICT` works.
+- If a job legitimately needs Spark, call it out in a comment so
+  the migration pass knows to plan for it.
 
-5. **Logos alongside primary-team theming (FEAT-10).** Logos break
-   the current monochrome voice. My recommendation: tiny
-   team-initial monogram dots (reusing existing color dots), NOT
-   real MLB logos. Keeps the aesthetic. **Monograms or logos?**
-
-6. **News scraping / LLM web-search enrichment (E section).** Real
-   infra (web-search tool integration, source trust, cost). My call:
-   defer to phase 2, not in this backlog. **Confirm?**
-
-7. **Team roster view (E section).** You said "I'll want to think
-   more about this." Deferred placeholder FEAT-16 sits below with
-   TBD acceptance criteria until you shape it.
-
-8. **Statcast ingest route (PIPE-1).** Recommendation: **direct
-   Savant JSON endpoint** over `pybaseball` library. Reason:
-   pybaseball is a thin wrapper around the same endpoint + its own
-   CSV cache; cutting it out removes a dependency surface and gives
-   us the freshest data. Durability is roughly equal — Savant's URL
-   scheme has been stable for ~5 years. **OK with direct?**
+Agents dispatched on pipeline tickets should read CLAUDE.md before
+starting.
 
 ---
 
@@ -2109,23 +2099,164 @@ Will be written up as a full ticket once scope is clear.
 
 ---
 
-### FEAT-17 — Pythagorean expected record (inline) *(pending open question 1)*
+### FEAT-17 — Pythagorean expected record (inline on team header)
 
-**Lane:** client + server
-**Status:** blocked by open question 1 confirmation · **Blocks:**
-none
-**Scope:** Add `"55-45 (expected 58-42)"` to the team header if
-confirmed.
+**Lane:** server + client
+**Status:** unblocked · **Blocks:** none
+**Scope:** Add an inline "expected" record to the team header
+derived from the classic Pythagorean formula so you can spot
+teams over- or under-performing their run differential at a
+glance. Small touch, no new card, no new chart.
 
-**Acceptance criteria (if accepted):**
+**Acceptance criteria:**
 
-- Server: team response includes
-  `expectedRecord: {wins, losses}`.
-- SQL: `pyth = RS² / (RS² + RA²)` → expected wins.
-- Client: inline on the existing record line, muted text.
+- Team response (`GET /api/team/:teamId`) gains an
+  `expectedRecord: { wins: number; losses: number }` field.
+- Computation:
+  `expected_win_pct = rs² / (rs² + ra²)` ·
+  `expected_wins = round(expected_win_pct × games_played)` ·
+  `expected_losses = games_played − expected_wins`. Uses the team's
+  cumulative runs-scored / runs-allowed from existing silver/gold
+  (no new tables).
+- Team page header line renders
+  `"55-45 (.549) · expected 58-42"` after existing record + before
+  the GB pill. Muted text weight (not bolded).
+- On mobile, still fits on the header line without wrapping; if
+  space constrained, keep expected and hide GB.
+- Tooltip on hover of "expected 58-42": "Pythagorean expected
+  record from runs scored and allowed. League average is 0."
 
-**Agent prompt stubbed — finalize after open question 1 is
-answered.**
+**Files expected to change:**
+
+- MODIFY `app/server/src/queries/index.ts` — add expectedRecord
+  to `getTeamFromWarehouse`. Pure SQL; no new gold table.
+- MODIFY `app/shared/types/team.ts` (post-ARCH-4) or `types.ts`.
+- MODIFY `app/client/src/pages/TeamPage.tsx` — render inline,
+  add tooltip.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on FEAT-17.
+
+Goal: add an inline Pythagorean expected record on the team page
+header. Existing silver/gold tables have runs_scored and
+runs_allowed per team-season; no new tables needed.
+
+Server:
+1. In getTeamFromWarehouse (app/server/src/queries/index.ts),
+   extend the SELECT with cumulative RS/RA for the season.
+2. Compute expected_wins = round(rs² / (rs² + ra²) * games). If
+   rs + ra = 0 (zero-game edge), default to 0-0.
+3. Add expectedRecord: {wins, losses} to the TeamResponse type in
+   app/shared/types/ (domain: team).
+
+Client:
+1. In TeamPage.tsx, update the record line to include
+   `· expected ${wins}-${losses}` after the existing
+   `(.winPct)` block and before ` · GB `.
+2. Use the existing muted text class for the expected fragment.
+3. Small tooltip on hover of the 'expected' fragment explaining
+   the Pythagorean formula.
+
+Do NOT create a new card. Do NOT add a chart. This is one line
+of prose on the existing header.
+
+Verify on /team/CHC: expected record renders, math checks out
+vs runsScored²/(runsScored²+runsAllowed²) · games.
+
+Commit clean.
+```
+
+**Notes / risks:** Pythagorean math assumes a full game-level
+signal; early-season with few games can look weird. Not a
+problem because the value is a fact, not a prediction.
+
+---
+
+### FEAT-18 — Trajectory window zoom (drag-to-select a date range)
+
+**Lane:** client
+**Status:** unblocked · **Blocks:** none
+**Scope:** Let the user drag-select a horizontal range on the
+trajectory chart's x-axis (games played) to zoom into a window
+of the season. Stat strip plots on the same page re-compute
+using only games inside the window. A "reset" button clears the
+window.
+
+**Acceptance criteria:**
+
+- Drag on the trajectory chart's plot area to select a range of
+  games played. Visual: a translucent gray rectangle follows the
+  drag; releasing commits the selection.
+- Upon selection, all strip plots on the team page (batting,
+  pitching, other) re-render using only games in the window.
+  Percentile ticks are recomputed.
+- A small "Reset window" button appears in the trajectory card
+  header when a window is active.
+- ESC also clears the window.
+- Window state is local (not persisted across navigation). If
+  user navigates to another team, window resets.
+
+**Files expected to change:**
+
+- MODIFY `app/client/src/charts/DivisionTrajectoryChart.tsx`
+  (drag handling, selection rectangle, emit range to parent)
+- MODIFY `app/client/src/pages/TeamPage.tsx` (own the window
+  state, pass down to stat components)
+- MODIFY `app/server/src/queries/index.ts` — add an optional
+  `gameWindow=A,B` query param to the stat-distribution endpoints
+  that filters aggregation to a games-played window. Needs to
+  work with ARCH-1's bulk endpoint too.
+- MODIFY `app/shared/types/league.ts`
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on FEAT-18.
+
+Goal: drag-to-select a window on the trajectory chart; all
+downstream strip plots recompute using only games in that
+window.
+
+Implementation:
+1. In DivisionTrajectoryChart.tsx, add drag handlers
+   (onMouseDown / onMouseMove / onMouseUp) on the plot area.
+   Render a translucent <rect> during drag. On mouseup, convert
+   pixel range → games-played range using the x-scale.
+2. Emit the selection via a new prop
+   `onWindowSelect(range: [number, number] | null)`.
+3. In TeamPage.tsx, own the window state. When set, pass
+   `gameWindow` to the stat distribution fetch.
+4. Server: extend the stat-distribution endpoint(s) to accept
+   an optional ?gameWindow=A,B param. When present, the
+   underlying query filters silver_player_game_* events and
+   re-aggregates. Plays well with ARCH-1's bulk endpoint —
+   window applies to every stat in the bulk request.
+5. Add a Reset button + ESC handler.
+6. Smooth visual: the strip-plot dots should transition to new
+   positions (their x-values change), reusing existing CSS
+   transition primitives (280ms ease).
+
+Do NOT persist the window in preferences or URL state for v1 —
+keep it purely local.
+
+Do NOT touch pipeline code.
+
+Verify on /team/CHC:
+- Drag-select April on the trajectory → all strip plots update
+  to reflect April-only performance.
+- Click Reset → everything snaps back.
+- Navigate away + back → window is cleared.
+
+Commit clean.
+```
+
+**Notes / risks:** Server-side stat aggregation over a window
+is real work — it can't use pre-computed `gold_team_stat_vs_league`
+rows (those are season-to-date). The endpoint needs to hit silver
+game-level data and aggregate on the fly. Measure perf; if slow,
+consider materializing daily gold snapshots and interpolating.
 
 ---
 
@@ -2151,9 +2282,8 @@ DERIV-6 (weekly digest) ─> FEAT-9
 Unblocked right now:
   ARCH-1, ARCH-3, ARCH-4, ARCH-5, PIPE-0.5, PIPE-1, PIPE-2,
   PIPE-3, PIPE-4, DERIV-2, DERIV-3, DERIV-6, FEAT-2, FEAT-3,
-  FEAT-10, FEAT-12, FEAT-14, FEAT-15
-  (FEAT-11 already shipped; FEAT-16/FEAT-17 deferred or gated on
-   a question)
+  FEAT-10, FEAT-12, FEAT-14, FEAT-15, FEAT-17, FEAT-18
+  (FEAT-11 already shipped; FEAT-16 deferred for scope)
 ```
 
 ---
@@ -2183,7 +2313,13 @@ files:
 - FEAT-14 · sum-stat chart UI fix
   (TeamPlayerDistribution)
 - FEAT-15 · how-to overlay (HelpOverlay + NavBar)
+- FEAT-17 · Pythagorean inline (server + TeamPage header)
 - ARCH-3 · hide Player tab (NavBar + /players placeholder)
+
+**Conflict watch:** FEAT-2 and FEAT-3 both edit
+`DivisionTrajectoryChart.tsx`. Run FEAT-3 first (more invasive —
+adds point hit zones), then FEAT-2 rebases. Alternatively: do
+FEAT-2 solo in its own wave.
 
 ### Wave 2 — "pipeline push, sequential"
 
@@ -2235,8 +2371,9 @@ Also parallel-safe (each hits a different route + component).
   stable.
 - FEAT-12 (player hyperlinks) — can be done earlier; slot when
   there's appetite.
-- FEAT-17 (Pythagorean inline) — once open question 1 is
-  answered.
+- FEAT-18 (trajectory window zoom) — can land anytime but feels
+  most useful once historical backfill (PIPE-3) lets you zoom
+  into prior months.
 - ARCH-2 (progressive disclosure) — ship only if the team page
   feels too dense after Wave 4.
 
