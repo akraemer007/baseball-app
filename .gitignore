@@ -15,6 +15,11 @@ __pycache__/
 coverage/
 *.log
 
+# TypeScript / Vite build artifacts
+*.tsbuildinfo
+app/client/vite.config.d.ts
+app/client/vite.config.js
+
 # Personal / machine-local
 .claude/
 .ai-dev-kit/
