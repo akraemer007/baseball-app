@@ -5,6 +5,7 @@ import {
   useEffect,
   useState,
 } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as d3 from 'd3';
 import type { StatDistributionEntry } from '@shared/types';
 
@@ -20,6 +21,11 @@ interface Props {
   /** User's secondary team — called out with a lighter medium outline + label
    *  when it's different from both the current and primary teams. */
   secondaryTeamAbbrev?: string;
+  /** Override the computed [min, max] value-axis domain. Set when we want this
+   *  chart to share its x-scale with another chart (e.g. the player-level
+   *  strip plot rendered below it) so the team's value lines up at the same
+   *  x across both. */
+  xDomain?: [number, number];
   height?: number;
 }
 
@@ -38,8 +44,10 @@ export function StatDistributionChart({
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
+  xDomain,
   height = 140,
 }: Props) {
+  const navigate = useNavigate();
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(600);
   const [hovered, setHovered] = useState<number | null>(null);
@@ -73,13 +81,19 @@ export function StatDistributionChart({
     const margin = { top: 22, right: 28, bottom: 36, left: 28 };
     const innerW = Math.max(60, width - margin.left - margin.right);
     const innerH = Math.max(60, height - margin.top - margin.bottom);
-    const vals = entries.map((e) => e.value);
-    const minV = d3.min(vals) ?? 0;
-    const maxV = d3.max(vals) ?? 1;
-    const pad = (maxV - minV) * 0.08 || 0.1;
+    let domain: [number, number];
+    if (xDomain) {
+      domain = xDomain;
+    } else {
+      const vals = entries.map((e) => e.value);
+      const minV = d3.min(vals) ?? 0;
+      const maxV = d3.max(vals) ?? 1;
+      const pad = (maxV - minV) * 0.08 || 0.1;
+      domain = [minV - pad, maxV + pad];
+    }
     const x = d3
       .scaleLinear()
-      .domain([minV - pad, maxV + pad])
+      .domain(domain)
       .range(lowerIsBetter ? [innerW, 0] : [0, innerW]);
     const jitter = (abbrev: string) => {
       let h = 0;
@@ -87,7 +101,7 @@ export function StatDistributionChart({
       return ((h & 0xff) / 0xff - 0.5) * innerH * 0.6;
     };
     return { margin, innerW, innerH, x, jitter };
-  }, [entries, width, height, lowerIsBetter]);
+  }, [entries, width, height, lowerIsBetter, xDomain]);
 
   const { margin, innerW, innerH, x, jitter } = layout;
   const midY = innerH / 2;
@@ -159,6 +173,7 @@ export function StatDistributionChart({
                   transform={`translate(${x(e.value)}, ${cy})`}
                   onMouseEnter={() => setHovered(i)}
                   onMouseLeave={() => setHovered(null)}
+                  onClick={() => navigate(`/team/${e.teamAbbrev}`)}
                   style={{ cursor: 'pointer' }}
                 >
                   <circle

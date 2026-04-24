@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { apiGet } from '../lib/api';
+import { apiGet, ApiError } from '../lib/api';
 import { usePreferences } from '../lib/preferences';
 import {
   savantPlayerUrl,
@@ -12,6 +12,7 @@ import type {
   LeagueResponse,
   PercentileStat,
   StatDistributionResponse,
+  TeamPlayerDistributionResponse,
   TeamResponse,
 } from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
@@ -19,7 +20,20 @@ import {
   StatDistributionChart,
   StatDistributionSpark,
 } from '../charts/StatDistributionChart';
+import { TeamPlayerDistribution } from '../charts/TeamPlayerDistribution';
 import { InfoTip } from '../components/InfoTip';
+
+/** Stats that are counting totals rather than rates. Team-level and
+ *  per-player values live on different scales (team hits ~600, player
+ *  hits ~80), so the expand-view keeps separate x-scales for these.
+ *  Rate stats not in this set share a unified x-scale between the team
+ *  chart and the per-player chart below it. */
+const SUM_STAT_KEYS = new Set([
+  'hits_total',
+  'hr_total',
+  'walks_total',
+  'strikeouts_pitching_total',
+]);
 
 /** Each title has a short head (shown on every device) and a long tail
  *  (hidden on phones to save the vertical space a wrap would take). */
@@ -202,6 +216,7 @@ export default function TeamPage() {
                   key={s.statKey}
                   stat={s}
                   season={season}
+                  teamColor={team.color}
                   currentTeamAbbrev={team.id}
                   primaryTeamAbbrev={primaryTeam}
                   secondaryTeamAbbrev={secondaryTeam}
@@ -351,6 +366,7 @@ export default function TeamPage() {
 function PercentileRow({
   stat,
   season,
+  teamColor,
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
@@ -359,14 +375,15 @@ function PercentileRow({
 }: {
   stat: PercentileStat;
   season: number;
+  teamColor: string;
   currentTeamAbbrev: string;
   primaryTeamAbbrev: string;
   secondaryTeamAbbrev: string;
   isOpen: boolean;
   onToggle: () => void;
 }) {
-  // Always fetch the distribution so the row's sparkline is populated
-  // up-front. React-Query dedupes by key, so the expanded
+  // Always fetch the 30-team distribution so the row's sparkline is
+  // populated up-front. React-Query dedupes by key, so the expanded
   // StatDistributionChart reuses the same cached response.
   const { data } = useQuery<StatDistributionResponse>({
     queryKey: ['stat-dist', stat.statKey, season],
@@ -374,6 +391,23 @@ function PercentileRow({
       apiGet<StatDistributionResponse>(
         `/api/league/stat-distribution?stat=${encodeURIComponent(stat.statKey)}&season=${season}`,
       ),
+  });
+
+  // Second chart: this team's players, fetched only when the row is
+  // expanded. The endpoint returns 404 for team-level-only stats
+  // (run_diff, ops_plus, etc.) — we silently skip rendering in that
+  // case by detecting the ApiError status.
+  const playerDistQ = useQuery<TeamPlayerDistributionResponse>({
+    queryKey: ['team-player-dist', currentTeamAbbrev, stat.statKey, season],
+    queryFn: () =>
+      apiGet<TeamPlayerDistributionResponse>(
+        `/api/team/${encodeURIComponent(currentTeamAbbrev)}/player-stat-distribution?stat=${encodeURIComponent(stat.statKey)}&season=${season}`,
+      ),
+    enabled: isOpen,
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError && err.status === 404) return false;
+      return failureCount < 2;
+    },
   });
 
   return (
@@ -420,15 +454,66 @@ function PercentileRow({
           className="stat-dist-container"
           onClick={(e) => e.stopPropagation()}
         >
-          <StatDistributionChart
-            entries={data.entries}
-            lowerIsBetter={data.lowerIsBetter}
-            leagueMean={data.leagueMean}
-            currentTeamAbbrev={currentTeamAbbrev}
-            primaryTeamAbbrev={primaryTeamAbbrev}
-            secondaryTeamAbbrev={secondaryTeamAbbrev}
-            height={160}
-          />
+          {(() => {
+            // For rate stats, unify the x-scale across the team chart + player
+            // chart so the team's value lines up at the same x in both. For
+            // sum stats (team total vs per-player total) the magnitudes differ
+            // by 1-2 orders, so each chart keeps its own domain.
+            const players = playerDistQ.data;
+            const isSumStat = SUM_STAT_KEYS.has(stat.statKey);
+            let sharedDomain: [number, number] | undefined;
+            if (players && !isSumStat) {
+              const all: number[] = [
+                ...data.entries.map((e) => e.value),
+                ...players.entries.map((e) => e.value),
+                players.teamValue,
+              ];
+              const minV = Math.min(...all);
+              const maxV = Math.max(...all);
+              const pad = (maxV - minV) * 0.08 || 0.1;
+              sharedDomain = [minV - pad, maxV + pad];
+            }
+            return (
+              <>
+                <StatDistributionChart
+                  entries={data.entries}
+                  lowerIsBetter={data.lowerIsBetter}
+                  leagueMean={data.leagueMean}
+                  currentTeamAbbrev={currentTeamAbbrev}
+                  primaryTeamAbbrev={primaryTeamAbbrev}
+                  secondaryTeamAbbrev={secondaryTeamAbbrev}
+                  xDomain={sharedDomain}
+                  height={160}
+                />
+                {players && players.entries.length > 0 && (
+                  <>
+                    <div
+                      className="muted mono"
+                      style={{
+                        fontSize: '0.7rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        marginTop: '0.5rem',
+                        marginBottom: '-0.25rem',
+                      }}
+                    >
+                      {currentTeamAbbrev}{' '}
+                      {players.side === 'hitter' ? 'hitters' : 'pitchers'} ·
+                      qualifying
+                    </div>
+                    <TeamPlayerDistribution
+                      entries={players.entries}
+                      lowerIsBetter={players.lowerIsBetter}
+                      teamValue={players.teamValue}
+                      teamColor={teamColor}
+                      side={players.side}
+                      xDomain={sharedDomain}
+                    />
+                  </>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

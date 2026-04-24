@@ -251,3 +251,29 @@ export interface StatDistributionResponse {
   leagueMean: number;
   entries: StatDistributionEntry[];
 }
+
+export interface TeamPlayerDistributionEntry {
+  /** MLBAM player id — for linking to Savant. */
+  playerId: string;
+  playerName: string;
+  /** The stat's value for this player on their own scale
+   *  (e.g. individual AVG for a hitter, individual HR count for a total). */
+  value: number;
+  /** Supplementary context: AB for hitters, IP (decimal) for pitchers. */
+  playingTime: number;
+}
+
+export interface TeamPlayerDistributionResponse {
+  season: number;
+  teamAbbrev: string;
+  statName: string;
+  statLabel: string;
+  /** Same orientation rule as the team chart. */
+  lowerIsBetter: boolean;
+  /** Reference line — the team's aggregate value for this stat, shown
+   *  as a vertical tick so the user can see who's above/below team avg. */
+  teamValue: number;
+  /** "hitter" or "pitcher" — drives the eligibility label (AB vs IP). */
+  side: 'hitter' | 'pitcher';
+  entries: TeamPlayerDistributionEntry[];
+}

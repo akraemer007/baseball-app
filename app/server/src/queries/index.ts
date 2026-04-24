@@ -14,6 +14,7 @@ import type {
   RecapItem,
   RecapsResponse,
   StatDistributionResponse,
+  TeamPlayerDistributionResponse,
   TeamResponse,
 } from '../../../shared/types.js';
 import { query } from '../lib/warehouse.js';
@@ -236,6 +237,116 @@ export async function getStatDistributionFromWarehouse(
       teamColor: r.primary_color,
       value: formatStatValue(safeStat, r.team_value),
       rank: r.rank_in_league,
+    })),
+  };
+}
+
+// ---- /api/team/:teamId/player-stat-distribution ----------------------------
+
+/** Per-player stat distribution within a team. Drives the second strip plot
+ *  that shows up inside the expanded percentile row on the Team page. Only
+ *  a subset of stats map to something meaningful at the player grain; team
+ *  totals like run_diff or league-indexed rates like OPS+ aren't included. */
+const PLAYER_STAT_SPECS: Record<
+  string,
+  {
+    side: 'hitter' | 'pitcher';
+    label: string;
+    /** SQL expression computing the stat off silver_player_season (alias `p`). */
+    valueExpr: string;
+    lowerIsBetter: boolean;
+  }
+> = {
+  avg:                         { side: 'hitter',  label: 'AVG',           valueExpr: 'p.avg',                                                      lowerIsBetter: false },
+  obp:                         { side: 'hitter',  label: 'OBP',           valueExpr: 'p.obp',                                                      lowerIsBetter: false },
+  slg:                         { side: 'hitter',  label: 'SLG',           valueExpr: 'p.slg',                                                      lowerIsBetter: false },
+  ops:                         { side: 'hitter',  label: 'OPS',           valueExpr: '(p.obp + p.slg)',                                            lowerIsBetter: false },
+  hits_total:                  { side: 'hitter',  label: 'Hits',          valueExpr: 'p.hits',                                                     lowerIsBetter: false },
+  hr_total:                    { side: 'hitter',  label: 'HR',            valueExpr: 'p.home_runs',                                                lowerIsBetter: false },
+  walks_total:                 { side: 'hitter',  label: 'BB',            valueExpr: 'p.walks',                                                    lowerIsBetter: false },
+  era:                         { side: 'pitcher', label: 'ERA',           valueExpr: 'p.era',                                                      lowerIsBetter: true  },
+  k_per_9:                     { side: 'pitcher', label: 'K/9',           valueExpr: 'p.strikeouts_p * 9.0 / NULLIF(p.innings_pitched, 0)',        lowerIsBetter: false },
+  strikeouts_pitching_total:   { side: 'pitcher', label: 'K (pitching)',  valueExpr: 'p.strikeouts_p',                                             lowerIsBetter: false },
+};
+
+/** Dynamic playing-time cutoffs that scale with the team's games-played-so-far.
+ *  Hitter = tracks the 3.1 PA/game batting-title rule using AB as a proxy.
+ *  Pitcher = inclusive enough to catch regular relievers alongside starters. */
+const HITTER_AB_PER_GAME = 2.7;
+const PITCHER_IP_PER_GAME = 0.4;
+
+interface TeamPlayerDistributionRow {
+  player_id: number;
+  player_name: string;
+  value: number | null;
+  playing_time: number | null;
+  team_games: number | null;
+  team_value: number | null;
+}
+
+export async function getTeamPlayerStatDistributionFromWarehouse(
+  teamAbbrev: string,
+  statKey: string,
+  season: number,
+): Promise<TeamPlayerDistributionResponse | null> {
+  const spec = PLAYER_STAT_SPECS[statKey];
+  if (!spec) return null;
+  const safeAbbrev = teamAbbrev.toUpperCase().replace(/[^A-Z]/g, '');
+  const ptCol = spec.side === 'hitter' ? 'p.at_bats' : 'p.innings_pitched';
+  const ptPerGame = spec.side === 'hitter' ? HITTER_AB_PER_GAME : PITCHER_IP_PER_GAME;
+
+  const rows = await query<TeamPlayerDistributionRow>(
+    `WITH team_row AS (
+       SELECT team_id FROM silver_team WHERE abbrev = '${safeAbbrev}'
+     ),
+     games_played AS (
+       SELECT COUNT(DISTINCT tg.game_pk) AS games
+         FROM silver_team_game tg
+         JOIN silver_game g USING (game_pk)
+         JOIN team_row t ON t.team_id = tg.team_id
+        WHERE g.season = ${season}
+          AND g.status = 'Final'
+          AND g.game_type = 'R'
+     ),
+     team_agg AS (
+       SELECT tgsl.team_value
+         FROM gold_team_stat_vs_league tgsl
+         JOIN team_row t ON t.team_id = tgsl.team_id
+        WHERE tgsl.season = ${season}
+          AND tgsl.stat_name = '${statKey}'
+     )
+     SELECT
+       p.player_id,
+       p.player_name,
+       ${spec.valueExpr} AS value,
+       ${ptCol} AS playing_time,
+       (SELECT games FROM games_played) AS team_games,
+       (SELECT team_value FROM team_agg)  AS team_value
+       FROM silver_player_season p
+       JOIN team_row t ON t.team_id = p.team_id
+      WHERE p.season = ${season}
+        AND ${ptCol} IS NOT NULL
+        AND ${ptCol} >= ${ptPerGame} * (SELECT games FROM games_played)
+        AND (${spec.valueExpr}) IS NOT NULL
+      ORDER BY value ${spec.lowerIsBetter ? 'ASC' : 'DESC'}`,
+  );
+
+  if (rows.length === 0) return null;
+  const teamValue = rows[0].team_value ?? 0;
+
+  return {
+    season,
+    teamAbbrev: safeAbbrev,
+    statName: statKey,
+    statLabel: spec.label,
+    lowerIsBetter: spec.lowerIsBetter,
+    teamValue: formatStatValue(statKey, teamValue),
+    side: spec.side,
+    entries: rows.map((r) => ({
+      playerId: String(r.player_id),
+      playerName: r.player_name,
+      value: formatStatValue(statKey, r.value),
+      playingTime: Number((r.playing_time ?? 0).toFixed(1)),
     })),
   };
 }
