@@ -300,7 +300,9 @@ export function StatDistributionChart({
               );
             })}
 
-          {/* Axis hints — full only */}
+          {/* Axis hints — the x-scale is flipped for lowerIsBetter
+              stats so "better" is always physically on the right, so
+              these labels are static. */}
           {!isSpark && (
             <>
               <text
@@ -312,7 +314,7 @@ export function StatDistributionChart({
                 fill="rgba(60, 80, 110, 0.8)"
                 style={{ textTransform: 'uppercase' }}
               >
-                {lowerIsBetter ? 'better →' : '← worse'}
+                ← worse
               </text>
               <text
                 x={innerW}
@@ -323,7 +325,7 @@ export function StatDistributionChart({
                 fill="rgba(60, 80, 110, 0.8)"
                 style={{ textTransform: 'uppercase' }}
               >
-                {lowerIsBetter ? '← worse' : 'better →'}
+                better →
               </text>
             </>
           )}

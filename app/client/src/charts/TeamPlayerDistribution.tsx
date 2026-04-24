@@ -89,8 +89,52 @@ export function TeamPlayerDistribution({
   const midY = innerH / 2;
   const hoveredEntry = hovered != null ? entries[hovered] : null;
 
-  // Alternate labels above / below the baseline to reduce collisions.
-  const labelSide = (i: number): 'above' | 'below' => (i % 2 === 0 ? 'above' : 'below');
+  // Label anti-collision: sort dots by x, alternate above/below along
+  // the axis, and push any same-side neighbor that still overlaps
+  // horizontally out to a second tier (with a leader line).
+  const labelLayout = useMemo(() => {
+    const CHAR_PX = 6.1; // fontSize 10 mono ≈ 6.1 px per char
+    const GAP = 2;
+    type Info = {
+      idx: number;
+      cx: number;
+      last: string;
+      halfWidth: number;
+      side: 'above' | 'below';
+      tier: 0 | 1;
+    };
+    const indexed: Info[] = entries
+      .map((e, i) => {
+        const parts = e.playerName.trim().split(/\s+/);
+        const last = parts.length > 1 ? parts.slice(1).join(' ') : parts[0];
+        return {
+          idx: i,
+          cx: x(e.value),
+          last,
+          halfWidth: (last.length * CHAR_PX) / 2,
+          side: 'above' as const,
+          tier: 0 as const,
+        };
+      })
+      .sort((a, b) => a.cx - b.cx);
+    // Assign sides alternately based on x-order so adjacent dots end
+    // up on different rows when possible.
+    indexed.forEach((info, rank) => {
+      info.side = rank % 2 === 0 ? 'above' : 'below';
+    });
+    // Within each side, bump a label to tier 1 when its box would
+    // collide horizontally with the previous same-side label's box.
+    for (const side of ['above', 'below'] as const) {
+      const same = indexed.filter((r) => r.side === side);
+      for (let i = 1; i < same.length; i++) {
+        const prev = same[i - 1];
+        const cur = same[i];
+        const gap = (cur.cx - cur.halfWidth) - (prev.cx + prev.halfWidth);
+        if (gap < GAP) cur.tier = 1;
+      }
+    }
+    return new Map(indexed.map((info) => [info.idx, info]));
+  }, [entries, x]);
 
   const teamValueLabel = formatStat(teamValue, statKey);
 
@@ -130,13 +174,16 @@ export function TeamPlayerDistribution({
 
           {/* Player dots + labels */}
           {entries.map((e, i) => {
-            const cx = x(e.value);
-            const side = labelSide(i);
-            const labelY = side === 'above' ? -8 : 18;
+            const info = labelLayout.get(i)!;
+            const cx = info.cx;
+            const side = info.side;
+            const tier = info.tier;
+            // Tier 0: close to dot. Tier 1: pushed further + leader line.
+            const labelY =
+              side === 'above'
+                ? tier === 0 ? -10 : -22
+                : tier === 0 ? 18 : 30;
             const isHover = hovered === i;
-            // Last name only, so labels stay tight.
-            const parts = e.playerName.trim().split(/\s+/);
-            const last = parts.length > 1 ? parts.slice(1).join(' ') : parts[0];
             return (
               <g
                 key={e.playerId}
@@ -146,6 +193,16 @@ export function TeamPlayerDistribution({
                 style={{ cursor: 'pointer' }}
                 onClick={() => window.open(savantPlayerUrl(e.playerId), '_blank', 'noopener,noreferrer')}
               >
+                {tier === 1 && (
+                  <line
+                    x1={0}
+                    x2={0}
+                    y1={side === 'above' ? -6 : 6}
+                    y2={side === 'above' ? labelY + 8 : labelY - 10}
+                    stroke="rgba(10, 22, 40, 0.4)"
+                    strokeWidth={0.75}
+                  />
+                )}
                 <circle
                   r={5.5}
                   fill={teamColor}
@@ -163,7 +220,7 @@ export function TeamPlayerDistribution({
                   fill="var(--text)"
                   style={{ pointerEvents: 'none' }}
                 >
-                  {last}
+                  {info.last}
                 </text>
               </g>
             );
@@ -179,7 +236,7 @@ export function TeamPlayerDistribution({
             fill="rgba(60, 80, 110, 0.8)"
             style={{ textTransform: 'uppercase' }}
           >
-            {lowerIsBetter ? 'better →' : '← worse'}
+            ← worse
           </text>
           <text
             x={innerW}
@@ -190,7 +247,7 @@ export function TeamPlayerDistribution({
             fill="rgba(60, 80, 110, 0.8)"
             style={{ textTransform: 'uppercase' }}
           >
-            {lowerIsBetter ? '← worse' : 'better →'}
+            better →
           </text>
         </g>
       </svg>
