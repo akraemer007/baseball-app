@@ -243,6 +243,30 @@ export default function TeamPage() {
             ))}
           </select>
         )}
+        {leagueQ.data && (
+          <select
+            className="team-select"
+            value={comparisonTeam ?? ''}
+            onChange={(e) =>
+              setComparisonTeam(e.target.value ? e.target.value : null)
+            }
+            aria-label="Compare to team"
+            data-help-anchor="compare-to"
+          >
+            <option value="">Compare to (none)</option>
+            {leagueQ.data.divisions.map((div) => (
+              <optgroup key={div.id} label={div.name}>
+                {div.teams
+                  .filter((t) => t.id.toUpperCase() !== team.id.toUpperCase())
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+              </optgroup>
+            ))}
+          </select>
+        )}
       </div>
       <p className="muted" style={{ marginTop: '0.25rem' }}>
         <span className="mono" style={{ fontSize: '1.1rem', color: 'var(--text)' }}>
@@ -289,8 +313,6 @@ export default function TeamPage() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                gap: '0.5rem',
-                flexWrap: 'wrap',
                 marginBottom: '0.5rem',
               }}
             >
@@ -300,70 +322,36 @@ export default function TeamPage() {
                   : `Season trajectory (${teamDivision.name})`}
               </h3>
               <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  flexWrap: 'wrap',
-                }}
+                className="mono"
+                data-help-anchor="trajectory-mode"
+                style={{ display: 'inline-flex', fontSize: '0.75rem', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}
               >
-                {leagueQ.data && (
-                  <select
-                    className="team-select"
-                    value={comparisonTeam ?? ''}
-                    onChange={(e) =>
-                      setComparisonTeam(e.target.value ? e.target.value : null)
-                    }
-                    aria-label="Compare to team"
-                  >
-                    <option value="">Compare to (none)</option>
-                    {leagueQ.data.divisions.map((div) => (
-                      <optgroup key={div.id} label={div.name}>
-                        {div.teams
-                          .filter(
-                            (t) => t.id.toUpperCase() !== team.id.toUpperCase(),
-                          )
-                          .map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                )}
-                <div
-                  className="mono"
-                  data-help-anchor="trajectory-mode"
-                  style={{ display: 'inline-flex', fontSize: '0.75rem', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}
+                <button
+                  type="button"
+                  onClick={() => setTrajectoryMode('division')}
+                  style={{
+                    padding: '0.25rem 0.7rem',
+                    background: trajectoryMode === 'division' ? 'var(--text)' : 'transparent',
+                    color: trajectoryMode === 'division' ? 'var(--bg)' : 'var(--text-dim)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => setTrajectoryMode('division')}
-                    style={{
-                      padding: '0.25rem 0.7rem',
-                      background: trajectoryMode === 'division' ? 'var(--text)' : 'transparent',
-                      color: trajectoryMode === 'division' ? 'var(--bg)' : 'var(--text-dim)',
-                      border: 'none',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Division
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTrajectoryMode('yoy')}
-                    style={{
-                      padding: '0.25rem 0.7rem',
-                      background: trajectoryMode === 'yoy' ? 'var(--text)' : 'transparent',
-                      color: trajectoryMode === 'yoy' ? 'var(--bg)' : 'var(--text-dim)',
-                      border: 'none',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    vs {season - 1}
-                  </button>
-                </div>
+                  Division
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTrajectoryMode('yoy')}
+                  style={{
+                    padding: '0.25rem 0.7rem',
+                    background: trajectoryMode === 'yoy' ? 'var(--text)' : 'transparent',
+                    color: trajectoryMode === 'yoy' ? 'var(--bg)' : 'var(--text-dim)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  vs {season - 1}
+                </button>
               </div>
             </div>
             <DivisionTrajectoryChart
@@ -371,9 +359,6 @@ export default function TeamPage() {
               trajectories={trajectoriesForChart}
               highlightTeamId={team.id}
               ghostTrajectory={ghost}
-              comparisonTrajectory={comparisonInfo?.trajectory ?? null}
-              comparisonColor={comparisonInfo?.team.color}
-              comparisonAbbrev={comparisonInfo?.team.abbrev}
               height={240}
               onGameClick={(info) => {
                 if (info.gamePk) setSelectedGame({ gamePk: info.gamePk });
@@ -447,7 +432,15 @@ export default function TeamPage() {
                   currentTeamAbbrev={team.id}
                   primaryTeamAbbrev={primaryTeam}
                   secondaryTeamAbbrev={secondaryTeam}
-                  comparisonTeamAbbrev={comparisonInfo?.team.id ?? null}
+                  comparisonTeam={
+                    comparisonInfo
+                      ? {
+                          abbrev: comparisonInfo.team.id,
+                          name: comparisonInfo.team.name,
+                          color: comparisonInfo.team.color,
+                        }
+                      : null
+                  }
                   scope={statScope}
                   teamLeague={teamLeague}
                   teamLeagueMap={teamLeagueMap}
@@ -464,7 +457,7 @@ export default function TeamPage() {
       })}
 
       <div className="grid grid-2">
-        <div className="card">
+        <div className="card" data-help-anchor="last-10">
           <h3>Last 10</h3>
           <table className="stat-table">
             <thead>
@@ -531,7 +524,7 @@ export default function TeamPage() {
           </table>
         </div>
 
-        <div className="card">
+        <div className="card" data-help-anchor="upcoming">
           <h3>Upcoming</h3>
           <table className="stat-table">
             <thead>
@@ -602,7 +595,7 @@ function PercentileRow({
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
-  comparisonTeamAbbrev,
+  comparisonTeam,
   scope,
   teamLeague,
   teamLeagueMap,
@@ -616,7 +609,10 @@ function PercentileRow({
   currentTeamAbbrev: string;
   primaryTeamAbbrev: string;
   secondaryTeamAbbrev: string;
-  comparisonTeamAbbrev: string | null;
+  /** Comparison team selected from the team-header dropdown. When set,
+   *  the expanded row renders a second per-player strip plot underneath
+   *  the current team's so you can eyeball roster-level differences. */
+  comparisonTeam: { abbrev: string; name: string; color: string } | null;
   scope: 'mlb' | 'league';
   teamLeague: 'AL' | 'NL' | null;
   teamLeagueMap: Map<string, 'AL' | 'NL'>;
@@ -679,6 +675,29 @@ function PercentileRow({
     staleTime: 5 * 60 * 1000,
   });
 
+  // Comparison team's per-player distribution. Same shape as the current
+  // team's; rendered as a second strip plot underneath when set, so the
+  // user can eyeball roster-level differences. Gated on a comparison
+  // selection — no fetch when none.
+  const comparisonPlayerDistQ = useQuery<TeamPlayerDistributionResponse>({
+    queryKey: [
+      'team-player-dist',
+      comparisonTeam?.abbrev ?? '',
+      stat.statKey,
+      season,
+    ],
+    queryFn: () =>
+      apiGet<TeamPlayerDistributionResponse>(
+        `/api/team/${encodeURIComponent(comparisonTeam!.abbrev)}/player-stat-distribution?stat=${encodeURIComponent(stat.statKey)}&season=${season}`,
+      ),
+    enabled: !!comparisonTeam,
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError && err.status === 404) return false;
+      return failureCount < 2;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   return (
     <div
       className="percentile-row percentile-row-expandable"
@@ -706,14 +725,15 @@ function PercentileRow({
       <div className="percentile-value muted mono">{formatStat(stat.value, stat.statKey)}</div>
       <div className="percentile-spark-wrap">
         {scopedData && (() => {
-          // Unify the x-scale across the team chart and the per-player
-          // chart below so dots at the same value land at the same x in
-          // both. Rate stats only — for sum stats (team total vs per-
-          // player total) the magnitudes differ by 1-2 orders so each
-          // chart keeps its own domain. Computed at this level (not inside
+          // Unify the x-scale across the team chart and BOTH per-player
+          // charts (current team + optional comparison team) so dots at
+          // the same value land at the same x everywhere. Rate stats only
+          // — sum stats use per-chart domains because team total dwarfs
+          // individual player totals. Computed at this level (not inside
           // the isOpen block) so the folded spark uses the same domain as
           // the expanded full chart — no horizontal jump on expand.
           const players = playerDistQ.data;
+          const cmpPlayers = comparisonPlayerDistQ.data;
           const isSumStat = SUM_STAT_KEYS.has(stat.statKey);
           let sharedDomain: [number, number] | undefined;
           if (players && !isSumStat) {
@@ -722,6 +742,10 @@ function PercentileRow({
               ...players.entries.map((e) => e.value),
               players.teamValue,
             ];
+            if (cmpPlayers) {
+              all.push(...cmpPlayers.entries.map((e) => e.value));
+              all.push(cmpPlayers.teamValue);
+            }
             const minV = Math.min(...all);
             const maxV = Math.max(...all);
             const pad = (maxV - minV) * 0.08 || 0.1;
@@ -737,7 +761,6 @@ function PercentileRow({
               currentTeamAbbrev={currentTeamAbbrev}
               primaryTeamAbbrev={primaryTeamAbbrev}
               secondaryTeamAbbrev={secondaryTeamAbbrev}
-              comparisonTeamAbbrev={comparisonTeamAbbrev}
               xDomain={sharedDomain}
               detail={isOpen ? 'full' : 'spark'}
             />
@@ -749,6 +772,7 @@ function PercentileRow({
       </div>
       {isOpen && scopedData && (() => {
         const players = playerDistQ.data;
+        const cmpPlayers = comparisonPlayerDistQ.data;
         const isSumStat = SUM_STAT_KEYS.has(stat.statKey);
         let sharedDomain: [number, number] | undefined;
         if (players && !isSumStat) {
@@ -757,6 +781,10 @@ function PercentileRow({
             ...players.entries.map((e) => e.value),
             players.teamValue,
           ];
+          if (cmpPlayers) {
+            all.push(...cmpPlayers.entries.map((e) => e.value));
+            all.push(cmpPlayers.teamValue);
+          }
           const minV = Math.min(...all);
           const maxV = Math.max(...all);
           const pad = (maxV - minV) * 0.08 || 0.1;
@@ -792,6 +820,34 @@ function PercentileRow({
               xDomain={sharedDomain}
               hideTeamValue={isSumStat}
             />
+            {comparisonTeam && cmpPlayers && cmpPlayers.entries.length > 0 && (
+              <>
+                <div
+                  className="muted mono"
+                  style={{
+                    fontSize: '0.7rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    marginTop: '0.25rem',
+                    marginBottom: '-0.25rem',
+                  }}
+                >
+                  {comparisonTeam.abbrev}{' '}
+                  {cmpPlayers.side === 'hitter' ? 'hitters' : 'pitchers'} ·
+                  qualifying
+                </div>
+                <TeamPlayerDistribution
+                  entries={cmpPlayers.entries}
+                  lowerIsBetter={cmpPlayers.lowerIsBetter}
+                  teamValue={cmpPlayers.teamValue}
+                  teamColor={comparisonTeam.color}
+                  side={cmpPlayers.side}
+                  statKey={stat.statKey}
+                  xDomain={sharedDomain}
+                  hideTeamValue={isSumStat}
+                />
+              </>
+            )}
           </div>
         );
       })()}

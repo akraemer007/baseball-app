@@ -47,6 +47,18 @@ const COPY_BY_ROUTE: Record<string, Record<string, AnchorCopy>> = {
       label: 'Click a row to expand into a 30-team distribution',
       side: 'right',
     },
+    'compare-to': {
+      label: 'Pick a team to overlay their players in each expanded stat row',
+      side: 'bottom',
+    },
+    'last-10': {
+      label: 'Dates link to box scores · team abbrevs link to that team page',
+      side: 'top',
+    },
+    'upcoming': {
+      label: 'Matchup column links to the game preview · pitcher names go to Savant',
+      side: 'top',
+    },
   },
 };
 
