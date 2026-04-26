@@ -365,7 +365,11 @@ _retry_sql(f"""
         SUM(loss) OVER (PARTITION BY season, team_id ORDER BY game_date) AS cum_losses,
         SUM(win) OVER (PARTITION BY season, team_id ORDER BY game_date)
           - SUM(loss) OVER (PARTITION BY season, team_id ORDER BY game_date) AS w_minus_l,
-        ROW_NUMBER() OVER (PARTITION BY season, team_id ORDER BY game_date) AS games_played
+        -- games_played counts ACTUAL games, not dates. Doubleheader days
+        -- contribute 2 to a team's count even though they share one
+        -- game_date row, so summing win+loss across the running window
+        -- is correct and ROW_NUMBER() (which counts date rows) is not.
+        SUM(win + loss) OVER (PARTITION BY season, team_id ORDER BY game_date) AS games_played
     FROM (
         SELECT season, team_id, game_date, SUM(win) AS win, SUM(loss) AS loss
         FROM team_results

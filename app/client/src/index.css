@@ -895,10 +895,10 @@ table.stat-table td.top-performer {
 }
 
 .proj-card {
-  background: rgba(30, 51, 84, 0.3);
+  background: var(--bg-elev);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  padding: 0.7rem 0.85rem;
 }
 
 /* Final games recede slightly so the eye is drawn to upcoming/in-progress
@@ -917,12 +917,64 @@ table.stat-table td.top-performer {
 
 
 .proj-matchup {
-  font-size: 0.95rem;
+  font-size: 1rem;
+  line-height: 1.3;
 }
 
-.proj-lean {
-  font-size: 0.8rem;
-  margin: 0.1rem 0;
+/* Matchup probability strip — thin two-team bar with team-color fills.
+   The away team starts on the left, home on the right; widths sum to
+   100%. Sits between the matchup line and the pitcher row, visually
+   echoing the strip plots used on Team page. */
+.proj-prob {
+  margin: 0.45rem 0 0.3rem;
+}
+
+.proj-prob-track {
+  display: flex;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.proj-prob-fill {
+  height: 100%;
+  transition: width 200ms ease;
+}
+
+.proj-prob-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  margin-top: 0.25rem;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+.proj-prob-side-away,
+.proj-prob-side-home {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: baseline;
+}
+
+.proj-prob-pct {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Inline hit/miss tag for finals — quiet text, not a pill. */
+.proj-prob-hit {
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.proj-pitchers {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.4;
 }
 
 .recap-list {

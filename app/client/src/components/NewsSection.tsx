@@ -125,7 +125,10 @@ export default function NewsSection() {
                 const isFinal = g.status === 'Final';
                 const homeFav = g.impliedHomeWinProb > 0.5;
                 const favAbbrev = homeFav ? g.homeTeamId : g.awayTeamId;
-                const favPct = (homeFav ? g.impliedHomeWinProb : 1 - g.impliedHomeWinProb) * 100;
+                const homePct = g.impliedHomeWinProb * 100;
+                const awayPct = 100 - homePct;
+                const homeColor = teamMeta.get(g.homeTeamId.toUpperCase())?.color ?? 'var(--text-dim)';
+                const awayColor = teamMeta.get(g.awayTeamId.toUpperCase())?.color ?? 'var(--text-dim)';
                 const predictionHit =
                   isFinal && g.winnerTeamId
                     ? g.winnerTeamId.toUpperCase() === favAbbrev.toUpperCase()
@@ -202,13 +205,44 @@ export default function NewsSection() {
                         </span>
                       )}
                     </div>
-                    <div className="proj-lean muted mono">
-                      {isFinal
-                        ? `lean ${favAbbrev} (${favPct.toFixed(0)}%) — ${predictionHit ? 'hit' : 'miss'}`
-                        : `lean: ${favAbbrev} (${favPct.toFixed(0)}%)`}
+                    <div className="proj-prob">
+                      <div
+                        className="proj-prob-track"
+                        role="img"
+                        aria-label={`Pre-game projection: ${g.awayTeamId} ${awayPct.toFixed(0)}%, ${g.homeTeamId} ${homePct.toFixed(0)}%`}
+                      >
+                        <div
+                          className="proj-prob-fill"
+                          style={{ width: `${awayPct}%`, background: awayColor }}
+                        />
+                        <div
+                          className="proj-prob-fill"
+                          style={{ width: `${homePct}%`, background: homeColor }}
+                        />
+                      </div>
+                      <div className="proj-prob-labels mono">
+                        <span className="proj-prob-side-away">
+                          <span style={{ color: awayColor, fontWeight: !homeFav ? 700 : 400 }}>
+                            {g.awayTeamId}
+                          </span>
+                          <span className="proj-prob-pct">{awayPct.toFixed(0)}%</span>
+                          {isFinal && !homeFav && (
+                            <span className="proj-prob-hit">{predictionHit ? '✓ hit' : '✗ miss'}</span>
+                          )}
+                        </span>
+                        <span className="proj-prob-side-home">
+                          {isFinal && homeFav && (
+                            <span className="proj-prob-hit">{predictionHit ? '✓ hit' : '✗ miss'}</span>
+                          )}
+                          <span className="proj-prob-pct">{homePct.toFixed(0)}%</span>
+                          <span style={{ color: homeColor, fontWeight: homeFav ? 700 : 400 }}>
+                            {g.homeTeamId}
+                          </span>
+                        </span>
+                      </div>
                     </div>
                     {(g.probableAwayPitcherName || g.probableHomePitcherName) && (
-                      <div className="muted" style={{ fontSize: '0.75rem' }}>
+                      <div className="proj-pitchers">
                         <NameLink
                           name={g.probableAwayPitcherName}
                           mlbamId={g.probableAwayPitcherId}
