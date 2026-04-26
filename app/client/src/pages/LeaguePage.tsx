@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiGet } from '../lib/api';
@@ -62,6 +62,15 @@ function formatGB(gb: number, isLeader: boolean): string {
   return `${whole}${half ? '½' : ''}`;
 }
 
+/** Convert a #rrggbb hex color to a "r, g, b" triple suitable for use
+ *  inside `rgba(var(--primary-team-accent-rgb), 0.08)`. Falls back to
+ *  the page text color if the input doesn't match the expected shape. */
+function hexToRgb(hex: string): string {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!m) return '10, 22, 40';
+  return `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}`;
+}
+
 export default function LeaguePage() {
   const season = new Date().getUTCFullYear();
   const { primaryTeam, secondaryTeam, setPrimaryTeam, setSecondaryTeam } = usePreferences();
@@ -121,8 +130,15 @@ export default function LeaguePage() {
 
   const allTeams = useMemo(() => divisions.flatMap((d) => d.teams), [divisions]);
 
+  const pageAccentStyle: CSSProperties | undefined = primaryTeamData
+    ? {
+        ['--primary-team-accent' as string]: primaryTeamData.color,
+        ['--primary-team-accent-rgb' as string]: hexToRgb(primaryTeamData.color),
+      }
+    : undefined;
+
   return (
-    <div className="page">
+    <div className="page" style={pageAccentStyle}>
       <div className="league-header">
         <h1 style={{ margin: 0 }}>
           Hello, <span style={{ color: primaryTeamData?.color }}>{primaryTeamData?.name ?? primaryTeam}</span> fan

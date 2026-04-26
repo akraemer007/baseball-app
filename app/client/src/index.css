@@ -101,6 +101,20 @@ code,
   margin-bottom: 1rem;
 }
 
+/* FEAT-10: subtle primary-team tint on cards inside a page that has set
+ * --primary-team-accent-rgb. The gradient sits on top of --bg-elev, so
+ * if the var is missing the rgba() expression resolves to transparent
+ * and we fall back cleanly to plain --bg-elev. 6% keeps text contrast
+ * intact (verified against light theme --text). */
+.page .card {
+  background:
+    linear-gradient(
+      rgba(var(--primary-team-accent-rgb), 0.06),
+      rgba(var(--primary-team-accent-rgb), 0.06)
+    ),
+    var(--bg-elev);
+}
+
 .card h2 {
   margin-top: 0;
 }
@@ -148,12 +162,20 @@ code,
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  /* Inset shadow reserves space for the active-state underline so the
+   * label doesn't shift on activation. FEAT-10 paints it team-color. */
+  padding: 0.25rem 0;
+  box-shadow: inset 0 -2px 0 transparent;
 }
 
 .navbar a.active,
 .navbar a:hover {
   color: var(--text);
   text-decoration: none;
+}
+
+.navbar a.active {
+  box-shadow: inset 0 -2px 0 var(--primary-team-accent, var(--text));
 }
 
 /* Utility */

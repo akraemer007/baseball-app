@@ -213,8 +213,16 @@ export default function TeamPage() {
   const { team, record, expectedRecord, streak, percentileStats, recentGames, upcomingGames } =
     teamQ.data;
 
+  const teamAccentRgb = hexToRgb(team.color);
+
   return (
-    <div className="page">
+    <div
+      className="page"
+      style={{
+        ['--primary-team-accent' as string]: team.color,
+        ['--primary-team-accent-rgb' as string]: teamAccentRgb,
+      }}
+    >
       <div className="team-header-row">
         <h1 style={{ color: team.color, margin: 0 }}>{team.name}</h1>
         {leagueQ.data && (
@@ -795,6 +803,15 @@ function formatGB(gb: number): string {
   const whole = Math.floor(gb);
   const half = gb - whole >= 0.5 ? '½' : '';
   return `${whole}${half}`;
+}
+
+/** Convert a #rrggbb hex color to a "r, g, b" triple suitable for use
+ *  inside `rgba(var(--primary-team-accent-rgb), 0.08)`. Falls back to
+ *  the page text color if the input doesn't match the expected shape. */
+function hexToRgb(hex: string): string {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!m) return '10, 22, 40';
+  return `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}`;
 }
 
 function PitcherLink({
