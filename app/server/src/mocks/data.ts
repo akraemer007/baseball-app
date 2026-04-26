@@ -219,6 +219,17 @@ export function getTeam(teamId: string, season: number): TeamResponse {
     };
   });
 
+  // Mock Pythagorean: shift mock wins by a small lucky/unlucky offset so the
+  // header line shows something believable next to the real record.
+  const luckOffset = Math.round(rand() * 6 - 3);
+  const games = wins + losses;
+  let expectedWins = Math.max(0, Math.min(games, wins + luckOffset));
+  let expectedLosses = games - expectedWins;
+  if (games === 0) {
+    expectedWins = 0;
+    expectedLosses = 0;
+  }
+
   return {
     season,
     team,
@@ -229,6 +240,7 @@ export function getTeam(teamId: string, season: number): TeamResponse {
       runDiff,
       gamesBehind,
     },
+    expectedRecord: { wins: expectedWins, losses: expectedLosses },
     streak: { type: rand() > 0.5 ? 'W' : 'L', length: 1 + Math.floor(rand() * 5) },
     percentileStats,
     recentGames,

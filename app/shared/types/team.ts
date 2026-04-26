@@ -74,6 +74,8 @@ export interface TeamResponse {
   team: Team;
   record: TeamRecord;
   streak: TeamStreak;
+  /** Pythagorean expected record from this season's RS / RA. */
+  expectedRecord: { wins: number; losses: number };
   percentileStats: PercentileStat[];
   recentGames: GameSummary[];
   upcomingGames: ScheduledGame[];

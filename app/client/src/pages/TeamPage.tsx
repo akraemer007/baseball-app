@@ -178,7 +178,7 @@ export default function TeamPage() {
       </div>
     );
 
-  const { team, record, streak, percentileStats, recentGames, upcomingGames } =
+  const { team, record, expectedRecord, streak, percentileStats, recentGames, upcomingGames } =
     teamQ.data;
 
   return (
@@ -208,7 +208,15 @@ export default function TeamPage() {
         <span className="mono" style={{ fontSize: '1.1rem', color: 'var(--text)' }}>
           {record.wins}-{record.losses}
         </span>{' '}
-        ({formatSlashStat(record.winPct)}) · GB{' '}
+        ({formatSlashStat(record.winPct)}){' '}
+        · expected{' '}
+        <span className="mono">
+          {expectedRecord.wins}-{expectedRecord.losses}
+        </span>
+        <InfoTip>
+          Pythagorean expected record from runs scored and allowed (RS² / (RS² + RA²)).
+        </InfoTip>
+        {' '}· GB{' '}
         <span className="mono">{formatGB(record.gamesBehind)}</span>
         {' '}· Run diff{' '}
         <span className="mono">

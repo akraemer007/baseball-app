@@ -732,6 +732,21 @@ export async function getTeamFromWarehouse(
       )
     : 0;
 
+  // Pythagorean expected record: expected_win_pct = RS² / (RS² + RA²),
+  // expected_wins = round(pct × games_played). Edge case: if either total
+  // is missing or no games have been played, fall back to a 0-0 placeholder.
+  const runsFor = runDiffRow[0]?.runs_for ?? 0;
+  const runsAgainst = runDiffRow[0]?.runs_against ?? 0;
+  const gamesPlayed = summary.cum_wins + summary.cum_losses;
+  let expectedWins = 0;
+  let expectedLosses = 0;
+  if (gamesPlayed > 0 && runsFor + runsAgainst > 0) {
+    const expectedWinPct =
+      (runsFor * runsFor) / (runsFor * runsFor + runsAgainst * runsAgainst);
+    expectedWins = Math.round(expectedWinPct * gamesPlayed);
+    expectedLosses = gamesPlayed - expectedWins;
+  }
+
   return {
     season,
     team: {
@@ -749,6 +764,7 @@ export async function getTeamFromWarehouse(
         : 0,
       gamesBehind,
     },
+    expectedRecord: { wins: expectedWins, losses: expectedLosses },
     streak: { type: streakType, length: streakLength },
     percentileStats: percentiles.map((p) => ({
       statKey: p.stat_name,
