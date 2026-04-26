@@ -17,6 +17,12 @@ interface Props {
    *  x-scale with the team-level chart above so the team's tick lines up
    *  at the same x in both charts. */
   xDomain?: [number, number];
+  /** When true, hide the dashed team-value reference tick + label and
+   *  scale the x-axis to the player values' range only. The tooltip
+   *  also gains a "% of team total" line. Used for summed counting
+   *  stats (hits, HRs, etc.) where pinning the axis to the team total
+   *  cramps every player dot into the left edge. */
+  hideTeamValue?: boolean;
   height?: number;
 }
 
@@ -35,6 +41,7 @@ export function TeamPlayerDistribution({
   side,
   statKey,
   xDomain,
+  hideTeamValue = false,
   height = 130,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -71,6 +78,15 @@ export function TeamPlayerDistribution({
     let domain: [number, number];
     if (xDomain) {
       domain = xDomain;
+    } else if (hideTeamValue) {
+      // Sum stats: span the player values only — dropping the team
+      // total stops it from anchoring the axis to a much-larger value
+      // and cramping every dot into the left edge.
+      const vals = entries.map((e) => e.value);
+      const minV = d3.min(vals) ?? 0;
+      const maxV = d3.max(vals) ?? 1;
+      const pad = (maxV - minV) * 0.12 || 0.1;
+      domain = [minV - pad, maxV + pad];
     } else {
       const vals = entries.map((e) => e.value);
       const minV = Math.min(teamValue, d3.min(vals) ?? 0);
@@ -83,7 +99,7 @@ export function TeamPlayerDistribution({
       .domain(domain)
       .range(lowerIsBetter ? [innerW, 0] : [0, innerW]);
     return { margin, innerW, innerH, x };
-  }, [entries, width, height, lowerIsBetter, teamValue, xDomain]);
+  }, [entries, width, height, lowerIsBetter, teamValue, xDomain, hideTeamValue]);
 
   const { margin, innerW, innerH, x } = layout;
   const midY = innerH / 2;
@@ -152,25 +168,27 @@ export function TeamPlayerDistribution({
           />
 
           {/* Team-value reference tick */}
-          <g transform={`translate(${x(teamValue)}, 0)`}>
-            <line
-              y1={0}
-              y2={innerH}
-              stroke="rgba(10, 22, 40, 0.5)"
-              strokeWidth={1}
-              strokeDasharray="3 3"
-            />
-            <text
-              x={0}
-              y={-8}
-              textAnchor="middle"
-              fontSize={9}
-              fontFamily="var(--mono)"
-              fill="rgba(60, 80, 110, 0.85)"
-            >
-              team {teamValueLabel}
-            </text>
-          </g>
+          {!hideTeamValue && (
+            <g transform={`translate(${x(teamValue)}, 0)`}>
+              <line
+                y1={0}
+                y2={innerH}
+                stroke="rgba(10, 22, 40, 0.5)"
+                strokeWidth={1}
+                strokeDasharray="3 3"
+              />
+              <text
+                x={0}
+                y={-8}
+                textAnchor="middle"
+                fontSize={9}
+                fontFamily="var(--mono)"
+                fill="rgba(60, 80, 110, 0.85)"
+              >
+                team {teamValueLabel}
+              </text>
+            </g>
+          )}
 
           {/* Player dots + labels */}
           {entries.map((e, i) => {
@@ -269,6 +287,11 @@ export function TeamPlayerDistribution({
               ? `${hoveredEntry.playingTime} AB`
               : `${hoveredEntry.playingTime} IP`}
           </div>
+          {hideTeamValue && teamValue > 0 && (
+            <div className="mono sub">
+              {((hoveredEntry.value / teamValue) * 100).toFixed(1)}% of team total
+            </div>
+          )}
         </div>
       )}
     </div>

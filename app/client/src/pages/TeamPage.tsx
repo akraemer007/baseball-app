@@ -684,6 +684,7 @@ function PercentileRow({
               side={players.side}
               statKey={stat.statKey}
               xDomain={sharedDomain}
+              hideTeamValue={isSumStat}
             />
           </div>
         );
