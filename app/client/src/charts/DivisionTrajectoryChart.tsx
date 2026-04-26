@@ -313,8 +313,9 @@ export function DivisionTrajectoryChart({
                   }}
                 />
                 {/* Crosshair dot at the hovered game — drawn after the
-                    line so it sits on top. White ring lifts it off the
-                    line so the team color is unambiguously readable. */}
+                    line so it sits on top. Solid team-color disc, no
+                    stroke; the size bump (5 vs 2.2 line) gives enough
+                    definition without a distracting ring. */}
                 {hoverPoint && hoverPoint.teamId === traj.teamId && (() => {
                   const p = traj.points[hoverPoint.pointIdx];
                   if (!p) return null;
@@ -324,8 +325,6 @@ export function DivisionTrajectoryChart({
                       cy={y(p.wMinusL)}
                       r={5}
                       fill={color}
-                      stroke="#ffffff"
-                      strokeWidth={2}
                       pointerEvents="none"
                     />
                   );
