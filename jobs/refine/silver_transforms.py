@@ -221,15 +221,28 @@ def parse_boxscore(row) -> tuple[list[dict], list[dict], list[dict]]:
     return team_rows, bat_rows, pit_rows
 
 
-box_rows = spark.table(f"{fq}.bronze_boxscore").collect()
-print(f"boxscore source rows: {len(box_rows)}")
+# Process boxscore one season at a time so the driver never holds more
+# than ~1 season of raw JSON in memory. With seasons_back=6 backfill the
+# full collect() blew the driver heap (OOM, executor lost). Parsed typed
+# rows are small enough to accumulate across all seasons (~80MB total).
+years = sorted({
+    r.game_date[:4]
+    for r in spark.sql(f"SELECT DISTINCT game_date FROM {fq}.bronze_boxscore").collect()
+})
+print(f"boxscore years to process: {years}")
 
 all_team, all_bat, all_pit = [], [], []
-for r in box_rows:
-    t, b, p = parse_boxscore(r)
-    all_team.extend(t)
-    all_bat.extend(b)
-    all_pit.extend(p)
+for year in years:
+    box_rows = spark.table(f"{fq}.bronze_boxscore").filter(f"game_date LIKE '{year}-%'").collect()
+    print(f"  {year}: {len(box_rows)} boxscores")
+    for r in box_rows:
+        t, b, p = parse_boxscore(r)
+        all_team.extend(t)
+        all_bat.extend(b)
+        all_pit.extend(p)
+    # Release this year's raw JSON before pulling the next; parsed rows
+    # already accumulated.
+    del box_rows
 
 print(f"team_game: {len(all_team)}  batting: {len(all_bat)}  pitching: {len(all_pit)}")
 
