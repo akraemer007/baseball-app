@@ -242,7 +242,8 @@ export default function TeamPage() {
           ? (currentTraj ? [currentTraj] : [])
           : leagueQ.data.trajectory;
         return (
-          <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
+          <>
+          <div className="card">
             <div
               style={{
                 display: 'flex',
@@ -308,13 +309,14 @@ export default function TeamPage() {
                 No {season - 1} data for {team.abbrev}.
               </p>
             )}
-            {selectedGame && (
-              <GameDrawer
-                gamePk={selectedGame.gamePk}
-                onClose={() => setSelectedGame(null)}
-              />
-            )}
           </div>
+          {selectedGame && (
+            <GameDrawer
+              gamePk={selectedGame.gamePk}
+              onClose={() => setSelectedGame(null)}
+            />
+          )}
+          </>
         );
       })()}
 

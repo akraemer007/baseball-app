@@ -11,10 +11,10 @@ interface Props {
 }
 
 /**
- * Bottom-anchored drawer that surfaces a single game's summary when the
- * user clicks a point on the trajectory chart. Slides up on mount, slides
- * down on dismiss. The drawer is rendered as a sibling inside the chart's
- * card area; it does not portal anywhere.
+ * Normal-flow card that surfaces a single game's summary when the user
+ * clicks a point on the trajectory chart. Slides + fades in on mount.
+ * Rendered as a sibling card BELOW the trajectory card so it never
+ * overlaps the chart's axis label or trajectory lines.
  */
 export function GameDrawer({ gamePk, onClose }: Props) {
   const [open, setOpen] = useState(false);
@@ -26,22 +26,15 @@ export function GameDrawer({ gamePk, onClose }: Props) {
     return () => cancelAnimationFrame(id);
   }, []);
 
-  // ESC + click-outside dismiss.
+  // ESC dismiss only — no click-outside, since the drawer is now its own
+  // card; clicking back on the trajectory to pick a different game would
+  // otherwise dismiss the drawer before the new click fires.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
-    function onMouseDown(e: MouseEvent) {
-      const el = panelRef.current;
-      if (!el) return;
-      if (e.target instanceof Node && !el.contains(e.target)) onClose();
-    }
     document.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', onMouseDown);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('mousedown', onMouseDown);
-    };
+    return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
   const { data, isLoading, error } = useQuery<GameSummaryResponse>({
@@ -55,20 +48,16 @@ export function GameDrawer({ gamePk, onClose }: Props) {
   return (
     <div
       ref={panelRef}
+      className="card"
       role="dialog"
       aria-label="Game summary"
       style={{
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'var(--card)',
-        borderTop: '1px solid var(--border)',
-        boxShadow: '0 -4px 14px rgba(10, 22, 40, 0.08)',
+        position: 'relative',
+        marginTop: '0.75rem',
         padding: '0.75rem 1rem',
-        transform: open ? 'translateY(0)' : 'translateY(100%)',
-        transition: 'transform 280ms ease',
-        zIndex: 5,
+        transform: open ? 'translateY(0)' : 'translateY(8px)',
+        opacity: open ? 1 : 0,
+        transition: 'transform 280ms ease, opacity 280ms ease',
       }}
     >
       <button
