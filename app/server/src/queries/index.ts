@@ -1155,7 +1155,8 @@ interface GameRow {
 interface PitcherDecisionRow {
   player_id: number;
   player_name: string;
-  decision: string | null;
+  wins: number | null;
+  losses: number | null;
 }
 
 interface BatterLineRow {
@@ -1208,10 +1209,10 @@ export async function getGameSummaryFromWarehouse(
 
   const [decisions, batters] = await Promise.all([
     query<PitcherDecisionRow>(
-      `SELECT player_id, player_name, decision
+      `SELECT player_id, player_name, wins, losses
          FROM silver_player_game_pitching
         WHERE game_pk = ${gamePk}
-          AND decision IN ('W', 'L')`,
+          AND (COALESCE(wins, 0) = 1 OR COALESCE(losses, 0) = 1)`,
     ),
     // Top performer = highest total_bases; if tied/null, fall back to most hits.
     query<BatterLineRow>(
@@ -1227,8 +1228,8 @@ export async function getGameSummaryFromWarehouse(
     ),
   ]);
 
-  const win = decisions.find((d) => d.decision === 'W');
-  const loss = decisions.find((d) => d.decision === 'L');
+  const win = decisions.find((d) => (d.wins ?? 0) === 1);
+  const loss = decisions.find((d) => (d.losses ?? 0) === 1);
   const top = batters[0];
 
   return {
