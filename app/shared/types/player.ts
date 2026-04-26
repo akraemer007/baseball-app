@@ -76,6 +76,14 @@ export interface StatDistributionResponse {
   entries: StatDistributionEntry[];
 }
 
+/** Bulk variant: one season, many stats keyed by stat_name. Used by the Team
+ *  page to fetch all percentile-row distributions in a single round trip
+ *  rather than firing one /stat-distribution request per row. */
+export interface BulkStatDistributionResponse {
+  season: number;
+  distributions: Record<string, StatDistributionResponse>;
+}
+
 export interface TeamPlayerDistributionEntry {
   /** MLBAM player id — for linking to Savant. */
   playerId: string;

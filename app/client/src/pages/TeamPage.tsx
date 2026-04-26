@@ -9,6 +9,7 @@ import {
   savantPreviewUrl,
 } from '../lib/savant';
 import type {
+  BulkStatDistributionResponse,
   LeagueResponse,
   PercentileStat,
   StatDistributionResponse,
@@ -140,6 +141,27 @@ export default function TeamPage() {
   }, [leagueQ.data]);
 
   const teamLeague = teamDivision?.league ?? null;
+
+  // One bulk fetch covers every PercentileRow's strip-plot. Replaces the old
+  // per-row useQuery (~15 parallel GETs) with a single round-trip seeded at
+  // the page level. Sorted statKeys keep the cache key stable across renders
+  // even if percentileStats' order ever shifts.
+  const statKeys = useMemo(
+    () =>
+      teamQ.data
+        ? teamQ.data.percentileStats.map((s) => s.statKey).sort()
+        : [],
+    [teamQ.data],
+  );
+  const bulkDistQ = useQuery<BulkStatDistributionResponse>({
+    queryKey: ['stat-distributions-bulk', teamId, season, statKeys.join(',')],
+    queryFn: () =>
+      apiGet<BulkStatDistributionResponse>(
+        `/api/league/stat-distributions?stats=${encodeURIComponent(statKeys.join(','))}&season=${season}`,
+      ),
+    enabled: statKeys.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
 
   if (teamQ.isLoading)
     return (
@@ -327,6 +349,7 @@ export default function TeamPage() {
                   scope={statScope}
                   teamLeague={teamLeague}
                   teamLeagueMap={teamLeagueMap}
+                  distribution={bulkDistQ.data?.distributions[s.statKey]}
                   isOpen={expandedStat === s.statKey}
                   onToggle={() =>
                     setExpandedStat(expandedStat === s.statKey ? null : s.statKey)
@@ -480,6 +503,7 @@ function PercentileRow({
   scope,
   teamLeague,
   teamLeagueMap,
+  distribution,
   isOpen,
   onToggle,
 }: {
@@ -492,19 +516,16 @@ function PercentileRow({
   scope: 'mlb' | 'league';
   teamLeague: 'AL' | 'NL' | null;
   teamLeagueMap: Map<string, 'AL' | 'NL'>;
+  /** 30-team distribution for this stat. Sourced from the page-level bulk
+   *  query so we hit the network once per page load instead of once per row. */
+  distribution: StatDistributionResponse | undefined;
   isOpen: boolean;
   onToggle: () => void;
 }) {
-  // Always fetch the 30-team distribution so the row's sparkline is
-  // populated up-front. React-Query dedupes by key, so the expanded
-  // StatDistributionChart reuses the same cached response.
-  const { data } = useQuery<StatDistributionResponse>({
-    queryKey: ['stat-dist', stat.statKey, season],
-    queryFn: () =>
-      apiGet<StatDistributionResponse>(
-        `/api/league/stat-distribution?stat=${encodeURIComponent(stat.statKey)}&season=${season}`,
-      ),
-  });
+  // 30-team distribution arrives via the page-level bulk fetch (one network
+  // round-trip for all percentile rows). Alias for the existing `data`
+  // references below; the NL/AL filter logic is unchanged.
+  const data = distribution;
 
   // When "NL"/"AL" scope is active, filter the 30-team response to the
   // team's league (15 teams), recompute the reference mean as the

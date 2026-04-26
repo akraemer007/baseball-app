@@ -6,6 +6,7 @@
 //       Import and call from routes/ when ready.
 
 import type {
+  BulkStatDistributionResponse,
   GameType,
   HrRaceResponse,
   LeagueResponse,
@@ -239,6 +240,77 @@ export async function getStatDistributionFromWarehouse(
       rank: r.rank_in_league,
     })),
   };
+}
+
+// ---- /api/league/stat-distributions (bulk) ---------------------------------
+
+interface BulkStatDistributionRow {
+  stat_name: string;
+  team_abbrev: string;
+  team_name: string;
+  primary_color: string;
+  team_value: number;
+  league_mean: number;
+  rank_in_league: number;
+}
+
+/** Bulk variant of getStatDistributionFromWarehouse — one SQL round trip for
+ *  many stats. Each input stat is sanitized identically (regex strip +
+ *  STAT_LABELS whitelist) so injection vectors match the single-stat path.
+ *  Rows are grouped by stat_name in JS to produce the same per-stat payload
+ *  shape, so callers read `distributions[statName]` and treat each entry like
+ *  a StatDistributionResponse. */
+export async function getBulkStatDistributionsFromWarehouse(
+  stats: string[],
+  season: number
+): Promise<BulkStatDistributionResponse> {
+  const safeStats = Array.from(
+    new Set(
+      stats
+        .map((s) => s.replace(/[^a-z0-9_]/gi, ''))
+        .filter(
+          (s) =>
+            s.length > 0 &&
+            Object.prototype.hasOwnProperty.call(STAT_LABELS, s),
+        ),
+    ),
+  );
+  if (safeStats.length === 0) {
+    return { season, distributions: {} };
+  }
+  const inList = safeStats.map((s) => `'${s}'`).join(', ');
+  const rows = await query<BulkStatDistributionRow>(
+    `SELECT g.stat_name, g.team_abbrev, g.team_name, t.primary_color,
+            g.team_value, g.league_mean, g.rank_in_league
+       FROM gold_team_stat_vs_league g
+       JOIN silver_team t ON t.team_id = g.team_id
+      WHERE g.season = ${season} AND g.stat_name IN (${inList})
+      ORDER BY g.stat_name, g.rank_in_league`
+  );
+  const grouped = new Map<string, BulkStatDistributionRow[]>();
+  for (const r of rows) {
+    if (!grouped.has(r.stat_name)) grouped.set(r.stat_name, []);
+    grouped.get(r.stat_name)!.push(r);
+  }
+  const distributions: Record<string, StatDistributionResponse> = {};
+  for (const stat of safeStats) {
+    const statRows = grouped.get(stat) ?? [];
+    distributions[stat] = {
+      season,
+      statName: stat,
+      statLabel: STAT_LABELS[stat] ?? stat,
+      lowerIsBetter: LOWER_IS_BETTER.has(stat),
+      leagueMean: statRows[0]?.league_mean ?? 0,
+      entries: statRows.map((r) => ({
+        teamAbbrev: r.team_abbrev,
+        teamName: r.team_name,
+        teamColor: r.primary_color,
+        value: formatStatValue(stat, r.team_value),
+        rank: r.rank_in_league,
+      })),
+    };
+  }
+  return { season, distributions };
 }
 
 // ---- /api/team/:teamId/player-stat-distribution ----------------------------
