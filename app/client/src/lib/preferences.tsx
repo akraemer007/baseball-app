@@ -49,20 +49,18 @@ interface PreferencesContextValue extends PreferencesState {
 const PreferencesContext = createContext<PreferencesContextValue | null>(null);
 
 function readStored(): PreferencesState {
+  // comparisonTeam is intentionally NOT persisted — it's a transient
+  // per-visit selection (the user picks "compare to TEX" while looking at
+  // CHC, but next time they open the page they probably want a fresh
+  // unfiltered view). Always start at null on mount.
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as Partial<PreferencesState>;
-    // comparisonTeam is intentionally backward-compatible: missing key (older
-    // stored shape) reads back as null, which is the "no comparison" state.
-    const comparison =
-      typeof parsed.comparisonTeam === 'string' && parsed.comparisonTeam.length > 0
-        ? parsed.comparisonTeam
-        : null;
     return {
       primaryTeam: parsed.primaryTeam || DEFAULTS.primaryTeam,
       secondaryTeam: parsed.secondaryTeam || DEFAULTS.secondaryTeam,
-      comparisonTeam: comparison,
+      comparisonTeam: null,
     };
   } catch {
     return DEFAULTS;
@@ -72,13 +70,19 @@ function readStored(): PreferencesState {
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PreferencesState>(() => readStored());
 
+  // Persist primaryTeam + secondaryTeam only. comparisonTeam stays in
+  // memory as a transient selection.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const persisted = {
+        primaryTeam: state.primaryTeam,
+        secondaryTeam: state.secondaryTeam,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
     } catch {
       /* quota or disabled — no-op */
     }
-  }, [state]);
+  }, [state.primaryTeam, state.secondaryTeam]);
 
   const setPrimaryTeam = useCallback(
     (abbrev: string) => setState((s) => ({ ...s, primaryTeam: abbrev.toUpperCase() })),

@@ -33,6 +33,14 @@ const COPY_BY_ROUTE: Record<string, Record<string, AnchorCopy>> = {
       label: 'Click a division to feature its trajectory above',
       side: 'top',
     },
+    'todays-games': {
+      label: 'Pitcher names link to Savant · matchup links open the game preview · finals link to box score',
+      side: 'top',
+    },
+    'recap-list': {
+      label: 'Headlines link to box scores · player names link to Savant · pills tag the game type',
+      side: 'top',
+    },
   },
   team: {
     'trajectory-chart': {

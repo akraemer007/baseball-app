@@ -108,7 +108,7 @@ export default function NewsSection() {
   return (
     <>
       <h2 style={{ marginTop: '1.5rem' }}>Today's games</h2>
-      <div className="card">
+      <div className="card" data-help-anchor="todays-games">
         {projQ.isLoading && <p className="muted">Loading projections…</p>}
         {projQ.data && projQ.data.games.length === 0 && (
           <p className="muted">No games scheduled today.</p>
@@ -263,7 +263,7 @@ export default function NewsSection() {
       {recapsQ.data && recapsQ.data.recaps.length === 0 && (
         <p className="muted">No games on this date.</p>
       )}
-      <div className="recap-list">
+      <div className="recap-list" data-help-anchor="recap-list">
         {[...(recapsQ.data?.recaps ?? [])]
           .sort((a, b) => {
             const aP = isPrimary(a) ? 2 : isSecondary(a) ? 1 : 0;

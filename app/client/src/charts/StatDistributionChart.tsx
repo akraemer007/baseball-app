@@ -24,6 +24,10 @@ interface Props {
   primaryTeamAbbrev?: string;
   /** User's secondary team — lightest callout when different from current/primary. */
   secondaryTeamAbbrev?: string;
+  /** Comparison team selected from the team-page dropdown — transient
+   *  per-visit highlight, NOT persisted. Rendered as a ring (transparent
+   *  fill, team-color stroke) to read distinctly from primary/secondary. */
+  comparisonTeamAbbrev?: string | null;
   /** Override the computed [min, max] value-axis domain. Used to share the
    *  x-scale with the per-player strip plot below so the team's dot + tick
    *  line up at the same x across both charts. */
@@ -41,7 +45,7 @@ interface Props {
   height?: number;
 }
 
-type FeatureKind = 'current' | 'primary' | 'secondary' | null;
+type FeatureKind = 'current' | 'comparison' | 'primary' | 'secondary' | null;
 
 /**
  * Strip-plot (one dot per team) along a horizontal axis of the stat value.
@@ -58,6 +62,7 @@ export function StatDistributionChart({
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
+  comparisonTeamAbbrev,
   xDomain,
   detail = 'full',
   height,
@@ -93,16 +98,18 @@ export function StatDistributionChart({
 
   const featureKind = useMemo(() => {
     const cur = currentTeamAbbrev?.toUpperCase() ?? '';
+    const cmp = comparisonTeamAbbrev?.toUpperCase() ?? '';
     const pri = primaryTeamAbbrev?.toUpperCase() ?? '';
     const sec = secondaryTeamAbbrev?.toUpperCase() ?? '';
     return (abbrev: string): FeatureKind => {
       const u = abbrev.toUpperCase();
       if (u === cur) return 'current';
+      if (u === cmp) return 'comparison';
       if (u === pri) return 'primary';
       if (u === sec) return 'secondary';
       return null;
     };
-  }, [currentTeamAbbrev, primaryTeamAbbrev, secondaryTeamAbbrev]);
+  }, [currentTeamAbbrev, comparisonTeamAbbrev, primaryTeamAbbrev, secondaryTeamAbbrev]);
 
   const layout = useMemo(() => {
     // Horizontal padding is constant across spark/full so the x-scale
@@ -220,7 +227,8 @@ export function StatDistributionChart({
             .map((e, i) => ({ e, i, kind: featureKind(e.teamAbbrev) }))
             .sort((a, b) => {
               const order: Record<string, number> = {
-                current: 4,
+                current: 5,
+                comparison: 4,
                 primary: 3,
                 secondary: 2,
               };
@@ -233,6 +241,10 @@ export function StatDistributionChart({
                   switch (kind) {
                     case 'current':
                       return { r: 5, strokeWidth: 1.75, strokeColor: '#0a1628', fill: e.teamColor };
+                    case 'comparison':
+                      // Ring style — transparent fill, 2px team-color stroke —
+                      // reads distinctly from primary's filled-with-outline.
+                      return { r: 4, strokeWidth: 2, strokeColor: e.teamColor, fill: 'transparent' };
                     case 'primary':
                       return { r: 3.75, strokeWidth: 1.25, strokeColor: '#0a1628', fill: e.teamColor };
                     case 'secondary':
@@ -244,6 +256,8 @@ export function StatDistributionChart({
                 switch (kind) {
                   case 'current':
                     return { r: 7.5, strokeWidth: 2.5, strokeColor: '#0a1628', fill: e.teamColor };
+                  case 'comparison':
+                    return { r: 7, strokeWidth: 2.5, strokeColor: e.teamColor, fill: 'transparent' };
                   case 'primary':
                     return { r: 6.5, strokeWidth: 2, strokeColor: '#0a1628', fill: e.teamColor };
                   case 'secondary':
@@ -256,7 +270,13 @@ export function StatDistributionChart({
               // Which teams get a label rendered above their dot?
               // Spark: only the current team (an anchor so you can tell which is "yours").
               // Full: any featured team, plus the currently-hovered dot.
-              const showLabel = kind === 'current' || (!isSpark && (kind !== null || hovered === i));
+              // Spark: current + comparison both anchor labels (so the
+              // user can immediately see where the compared team sits).
+              // Full: any featured team plus the hovered dot.
+              const showLabel =
+                kind === 'current' ||
+                kind === 'comparison' ||
+                (!isSpark && (kind !== null || hovered === i));
               return (
                 <g
                   key={e.teamAbbrev}

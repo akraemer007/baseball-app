@@ -226,46 +226,53 @@ export default function TeamPage() {
       <div className="team-header-row">
         <h1 style={{ color: team.color, margin: 0 }}>{team.name}</h1>
         {leagueQ.data && (
-          <select
-            className="team-select"
-            value={team.id}
-            onChange={(e) => navigate(`/team/${e.target.value}`)}
-            aria-label="Switch team"
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.4rem',
+              alignItems: 'flex-end',
+            }}
           >
-            {leagueQ.data.divisions.map((div) => (
-              <optgroup key={div.id} label={div.name}>
-                {div.teams.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        )}
-        {leagueQ.data && (
-          <select
-            className="team-select"
-            value={comparisonTeam ?? ''}
-            onChange={(e) =>
-              setComparisonTeam(e.target.value ? e.target.value : null)
-            }
-            aria-label="Compare to team"
-            data-help-anchor="compare-to"
-          >
-            <option value="">Compare to (none)</option>
-            {leagueQ.data.divisions.map((div) => (
-              <optgroup key={div.id} label={div.name}>
-                {div.teams
-                  .filter((t) => t.id.toUpperCase() !== team.id.toUpperCase())
-                  .map((t) => (
+            <select
+              className="team-select"
+              value={team.id}
+              onChange={(e) => navigate(`/team/${e.target.value}`)}
+              aria-label="Switch team"
+            >
+              {leagueQ.data.divisions.map((div) => (
+                <optgroup key={div.id} label={div.name}>
+                  {div.teams.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
                     </option>
                   ))}
-              </optgroup>
-            ))}
-          </select>
+                </optgroup>
+              ))}
+            </select>
+            <select
+              className="team-select"
+              value={comparisonTeam ?? ''}
+              onChange={(e) =>
+                setComparisonTeam(e.target.value ? e.target.value : null)
+              }
+              aria-label="Compare to team"
+              data-help-anchor="compare-to"
+            >
+              <option value="">Compare to (none)</option>
+              {leagueQ.data.divisions.map((div) => (
+                <optgroup key={div.id} label={div.name}>
+                  {div.teams
+                    .filter((t) => t.id.toUpperCase() !== team.id.toUpperCase())
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
         )}
       </div>
       <p className="muted" style={{ marginTop: '0.25rem' }}>
@@ -761,6 +768,7 @@ function PercentileRow({
               currentTeamAbbrev={currentTeamAbbrev}
               primaryTeamAbbrev={primaryTeamAbbrev}
               secondaryTeamAbbrev={secondaryTeamAbbrev}
+              comparisonTeamAbbrev={comparisonTeam?.abbrev ?? null}
               xDomain={sharedDomain}
               detail={isOpen ? 'full' : 'spark'}
             />
