@@ -134,6 +134,20 @@ class MlbStatsApiClient:
     def player(self, player_id: int) -> ApiResult:
         return self._get(f"/people/{player_id}")
 
+    # ---- Transactions ----------------------------------------------------
+
+    def transactions(self, start_date: date | str, end_date: date | str) -> ApiResult:
+        """Roster moves (IL placements/activations, recalls, options, DFAs,
+        trades, claims) over a date range. The API caps total response size,
+        so callers should fetch in narrow windows (~7 days) and iterate."""
+        return self._get(
+            "/transactions",
+            {
+                "startDate": _fmt_date(start_date),
+                "endDate": _fmt_date(end_date),
+            },
+        )
+
 
 def _fmt_date(d: date | str) -> str:
     if isinstance(d, str):
