@@ -1008,3 +1008,109 @@ table.stat-table td.top-performer {
   color: var(--text);
   font-weight: 600;
 }
+
+/* Help (?) button — small circle right-aligned in the NavBar. Same
+ * monochrome border + dim text as the nav links, but a fixed-size
+ * circle so it reads as an icon and not another link. */
+.navbar-help {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.navbar-help:hover,
+.navbar-help.is-active {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+/* Help overlay — light dim, NOT a blocking modal. Fade-in is short
+ * so the page underneath stays legible during the transition. */
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 22, 40, 0.30);
+  z-index: 50;
+  animation: help-overlay-fade-in 200ms ease-out;
+}
+
+@keyframes help-overlay-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.help-overlay-empty {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+}
+
+.help-callout {
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.8rem;
+  line-height: 1.3;
+  padding: 0.5rem 0.65rem;
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(10, 22, 40, 0.25);
+  pointer-events: auto;
+}
+
+.help-callout-text {
+  font-family: var(--sans);
+}
+
+.help-callout-arrow {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+}
+
+.help-callout-top .help-callout-arrow {
+  bottom: -12px;
+  left: 50%;
+  margin-left: -6px;
+  border-top-color: var(--text);
+}
+
+.help-callout-bottom .help-callout-arrow {
+  top: -12px;
+  left: 50%;
+  margin-left: -6px;
+  border-bottom-color: var(--text);
+}
+
+.help-callout-left .help-callout-arrow {
+  right: -12px;
+  top: 50%;
+  margin-top: -6px;
+  border-left-color: var(--text);
+}
+
+.help-callout-right .help-callout-arrow {
+  left: -12px;
+  top: 50%;
+  margin-top: -6px;
+  border-right-color: var(--text);
+}

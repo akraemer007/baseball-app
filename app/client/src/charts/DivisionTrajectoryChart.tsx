@@ -286,7 +286,7 @@ export function DivisionTrajectoryChart({
   })();
 
   return (
-    <div ref={wrapRef} style={{ width: '100%', height, position: 'relative' }}>
+    <div ref={wrapRef} data-help-anchor="trajectory-chart" style={{ width: '100%', height, position: 'relative' }}>
       <svg width={width} height={height}>
         <g transform={`translate(${margin.left}, ${margin.top})`}>
           {/* Horizontal reference lines */}

@@ -334,6 +334,7 @@ export default function TeamPage() {
                 )}
                 <div
                   className="mono"
+                  data-help-anchor="trajectory-mode"
                   style={{ display: 'inline-flex', fontSize: '0.75rem', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}
                 >
                   <button
@@ -681,6 +682,7 @@ function PercentileRow({
   return (
     <div
       className="percentile-row percentile-row-expandable"
+      data-help-anchor="percentile-row"
       data-open={isOpen}
       role="button"
       tabIndex={0}

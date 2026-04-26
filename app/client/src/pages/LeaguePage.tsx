@@ -143,7 +143,7 @@ export default function LeaguePage() {
         <h1 style={{ margin: 0 }}>
           Hello, <span style={{ color: primaryTeamData?.color }}>{primaryTeamData?.name ?? primaryTeam}</span> fan
         </h1>
-        <div className="prefs-bar">
+        <div className="prefs-bar" data-help-anchor="team-picker">
           <label className="pref-field">
             <span className="pref-label">My team</span>
             <select
@@ -233,6 +233,7 @@ export default function LeaguePage() {
                   onClick={() => setSelectedDivisionId(div.id)}
                   className={`card standings-card ${isActive ? 'is-active' : ''}`}
                   aria-pressed={isActive}
+                  data-help-anchor="standings-card"
                 >
                   <h3 className="standings-head">{div.name}</h3>
                   <ul className="standings-list">
