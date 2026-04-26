@@ -61,7 +61,7 @@ def _retry_sql(sql, attempts=6, initial_backoff_s=5.0):
 _retry_sql(f"""
     CREATE TABLE IF NOT EXISTS {fq}.bronze_playbyplay (
         game_pk BIGINT,
-        season INT,
+        season BIGINT,
         fetched_at_utc TIMESTAMP,
         payload_gz BINARY
     ) USING DELTA
