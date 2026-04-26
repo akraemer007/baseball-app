@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiGet, ApiError } from '../lib/api';
 import { usePreferences } from '../lib/preferences';
 import {
@@ -102,7 +102,7 @@ export default function TeamPage() {
   const [trajectoryMode, setTrajectoryMode] = useState<'division' | 'yoy'>('division');
   const [statScope, setStatScope] = useState<'mlb' | 'league'>('mlb');
   const [selectedGame, setSelectedGame] = useState<{ gamePk: number } | null>(null);
-  const { primaryTeam, secondaryTeam } = usePreferences();
+  const { primaryTeam, secondaryTeam, comparisonTeam, setComparisonTeam } = usePreferences();
 
   const teamQ = useQuery<TeamResponse>({
     queryKey: ['team', teamId, season],
@@ -143,6 +143,38 @@ export default function TeamPage() {
   }, [leagueQ.data]);
 
   const teamLeague = teamDivision?.league ?? null;
+
+  // Self-compare is meaningless — the trajectory line and outlined callouts
+  // would just sit on top of the current team. Auto-clear when the user
+  // navigates to whatever team is currently the comparison.
+  useEffect(() => {
+    if (comparisonTeam && comparisonTeam.toUpperCase() === teamId.toUpperCase()) {
+      setComparisonTeam(null);
+    }
+  }, [comparisonTeam, teamId, setComparisonTeam]);
+
+  // Resolve the comparison team's metadata (color, abbrev, trajectory) from
+  // the league response. The trajectory always lives in `leagueQ.data` —
+  // ARCH-1's bulk endpoint already returned every team — so no extra fetch.
+  const comparisonInfo = useMemo(() => {
+    if (!comparisonTeam || !leagueQ.data) return null;
+    const upper = comparisonTeam.toUpperCase();
+    if (upper === teamId.toUpperCase()) return null;
+    let resolved: { team: import('@shared/types').Team } | null = null;
+    for (const div of leagueQ.data.divisions) {
+      const t = div.teams.find((x) => x.id.toUpperCase() === upper);
+      if (t) {
+        resolved = { team: t };
+        break;
+      }
+    }
+    if (!resolved) return null;
+    const traj =
+      leagueQ.data.trajectory.find(
+        (t) => t.teamId.toUpperCase() === upper,
+      ) ?? null;
+    return { team: resolved.team, trajectory: traj };
+  }, [comparisonTeam, leagueQ.data, teamId]);
 
   // One bulk fetch covers every PercentileRow's strip-plot. Replaces the old
   // per-row useQuery (~15 parallel GETs) with a single round-trip seeded at
@@ -249,6 +281,8 @@ export default function TeamPage() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                gap: '0.5rem',
+                flexWrap: 'wrap',
                 marginBottom: '0.5rem',
               }}
             >
@@ -258,35 +292,69 @@ export default function TeamPage() {
                   : `Season trajectory (${teamDivision.name})`}
               </h3>
               <div
-                className="mono"
-                style={{ display: 'inline-flex', fontSize: '0.75rem', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  flexWrap: 'wrap',
+                }}
               >
-                <button
-                  type="button"
-                  onClick={() => setTrajectoryMode('division')}
-                  style={{
-                    padding: '0.25rem 0.7rem',
-                    background: trajectoryMode === 'division' ? 'var(--text)' : 'transparent',
-                    color: trajectoryMode === 'division' ? 'var(--bg)' : 'var(--text-dim)',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
+                {leagueQ.data && (
+                  <select
+                    className="team-select"
+                    value={comparisonTeam ?? ''}
+                    onChange={(e) =>
+                      setComparisonTeam(e.target.value ? e.target.value : null)
+                    }
+                    aria-label="Compare to team"
+                  >
+                    <option value="">Compare to (none)</option>
+                    {leagueQ.data.divisions.map((div) => (
+                      <optgroup key={div.id} label={div.name}>
+                        {div.teams
+                          .filter(
+                            (t) => t.id.toUpperCase() !== team.id.toUpperCase(),
+                          )
+                          .map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                )}
+                <div
+                  className="mono"
+                  style={{ display: 'inline-flex', fontSize: '0.75rem', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}
                 >
-                  Division
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTrajectoryMode('yoy')}
-                  style={{
-                    padding: '0.25rem 0.7rem',
-                    background: trajectoryMode === 'yoy' ? 'var(--text)' : 'transparent',
-                    color: trajectoryMode === 'yoy' ? 'var(--bg)' : 'var(--text-dim)',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  vs {season - 1}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setTrajectoryMode('division')}
+                    style={{
+                      padding: '0.25rem 0.7rem',
+                      background: trajectoryMode === 'division' ? 'var(--text)' : 'transparent',
+                      color: trajectoryMode === 'division' ? 'var(--bg)' : 'var(--text-dim)',
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Division
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTrajectoryMode('yoy')}
+                    style={{
+                      padding: '0.25rem 0.7rem',
+                      background: trajectoryMode === 'yoy' ? 'var(--text)' : 'transparent',
+                      color: trajectoryMode === 'yoy' ? 'var(--bg)' : 'var(--text-dim)',
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    vs {season - 1}
+                  </button>
+                </div>
               </div>
             </div>
             <DivisionTrajectoryChart
@@ -294,6 +362,9 @@ export default function TeamPage() {
               trajectories={trajectoriesForChart}
               highlightTeamId={team.id}
               ghostTrajectory={ghost}
+              comparisonTrajectory={comparisonInfo?.trajectory ?? null}
+              comparisonColor={comparisonInfo?.team.color}
+              comparisonAbbrev={comparisonInfo?.team.abbrev}
               height={240}
               onGameClick={(info) => {
                 if (info.gamePk) setSelectedGame({ gamePk: info.gamePk });
@@ -367,6 +438,7 @@ export default function TeamPage() {
                   currentTeamAbbrev={team.id}
                   primaryTeamAbbrev={primaryTeam}
                   secondaryTeamAbbrev={secondaryTeam}
+                  comparisonTeamAbbrev={comparisonInfo?.team.id ?? null}
                   scope={statScope}
                   teamLeague={teamLeague}
                   teamLeagueMap={teamLeagueMap}
@@ -521,6 +593,7 @@ function PercentileRow({
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
+  comparisonTeamAbbrev,
   scope,
   teamLeague,
   teamLeagueMap,
@@ -534,6 +607,7 @@ function PercentileRow({
   currentTeamAbbrev: string;
   primaryTeamAbbrev: string;
   secondaryTeamAbbrev: string;
+  comparisonTeamAbbrev: string | null;
   scope: 'mlb' | 'league';
   teamLeague: 'AL' | 'NL' | null;
   teamLeagueMap: Map<string, 'AL' | 'NL'>;
@@ -653,6 +727,7 @@ function PercentileRow({
               currentTeamAbbrev={currentTeamAbbrev}
               primaryTeamAbbrev={primaryTeamAbbrev}
               secondaryTeamAbbrev={secondaryTeamAbbrev}
+              comparisonTeamAbbrev={comparisonTeamAbbrev}
               xDomain={sharedDomain}
               detail={isOpen ? 'full' : 'spark'}
             />

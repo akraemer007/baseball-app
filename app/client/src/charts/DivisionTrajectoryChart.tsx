@@ -21,6 +21,20 @@ interface Props {
    * overlay the current time window.
    */
   ghostTrajectory?: TeamTrajectory | null;
+  /**
+   * Optional second trajectory rendered on top of the division lines,
+   * regardless of whether the comparison team's id is in the current
+   * `division.teams`. Used by the team page's "Compare to…" dropdown so
+   * a Cubs fan can overlay a Yankees line without switching divisions.
+   * The chart treats this line like any other for hover/tooltip/click,
+   * just rendered with the supplied `comparisonColor` and pinned on top
+   * of the z-stack.
+   */
+  comparisonTrajectory?: TeamTrajectory | null;
+  /** Hex color for the comparison line + label. Defaults to mid-blue. */
+  comparisonColor?: string;
+  /** Display abbreviation for the comparison team's end-of-line label. */
+  comparisonAbbrev?: string;
   /** Optional external hover setter so the parent can sync with team chips. */
   onHoverTeam?: (teamId: string | null) => void;
   /**
@@ -52,6 +66,9 @@ export function DivisionTrajectoryChart({
   height = 180,
   highlightTeamId = null,
   ghostTrajectory = null,
+  comparisonTrajectory = null,
+  comparisonColor = '#3b6cb7',
+  comparisonAbbrev,
   onHoverTeam,
   onGameClick,
 }: Props) {
@@ -88,7 +105,16 @@ export function DivisionTrajectoryChart({
   const chart = useMemo(() => {
     const teamIds = new Set(division.teams.map((t) => t.id));
     const divTrajectories = trajectories.filter((t) => teamIds.has(t.teamId));
-    if (!divTrajectories.length) return null;
+    // Treat the comparison line as an additional trajectory for layout +
+    // scaling purposes, but keep it OUT of `divTrajectories` so it doesn't
+    // get caught by the division-membership filter on render. This also
+    // skips it when the comparison team happens to already be in-division
+    // (avoids drawing the same line twice).
+    const comparisonTraj =
+      comparisonTrajectory && !teamIds.has(comparisonTrajectory.teamId)
+        ? comparisonTrajectory
+        : null;
+    if (!divTrajectories.length && !comparisonTraj) return null;
 
     const margin = { top: 10, right: 40, bottom: 26, left: 36 };
     const innerW = Math.max(40, width - margin.left - margin.right);
@@ -99,10 +125,14 @@ export function DivisionTrajectoryChart({
     const maxGamesGhost = ghostTrajectory
       ? d3.max(ghostTrajectory.points, (p) => p.gamesPlayed) ?? 0
       : 0;
-    const maxGames = Math.max(maxGamesDiv, maxGamesGhost);
+    const maxGamesCmp = comparisonTraj
+      ? d3.max(comparisonTraj.points, (p) => p.gamesPlayed) ?? 0
+      : 0;
+    const maxGames = Math.max(maxGamesDiv, maxGamesGhost, maxGamesCmp);
     const allY = [
       ...divTrajectories.flatMap((t) => t.points.map((p) => p.wMinusL)),
       ...(ghostTrajectory?.points.map((p) => p.wMinusL) ?? []),
+      ...(comparisonTraj?.points.map((p) => p.wMinusL) ?? []),
     ];
     const absMax = Math.max(
       3,
@@ -120,10 +150,15 @@ export function DivisionTrajectoryChart({
     // Compute end-of-line positions for each team, then resolve vertical
     // overlaps by pushing labels apart. Keep a link from each label back to
     // its anchor point so we can draw a leader line when a label is shifted.
+    // The comparison team participates in the same overlap-resolution pass
+    // so its label doesn't collide with a division team's label.
     const LABEL_FS = 12; // px
     const MIN_GAP = LABEL_FS + 2;
     type LabelRow = { teamId: string; anchorY: number; labelY: number };
-    const labelRows: LabelRow[] = divTrajectories
+    const labelSourceTrajs = comparisonTraj
+      ? [...divTrajectories, comparisonTraj]
+      : divTrajectories;
+    const labelRows: LabelRow[] = labelSourceTrajs
       .map((t) => {
         const last = t.points[t.points.length - 1];
         return last
@@ -146,8 +181,20 @@ export function DivisionTrajectoryChart({
     }
     const labelByTeam = new Map(labelRows.map((r) => [r.teamId, r]));
 
-    return { margin, innerW, innerH, x, y, yTicks, maxGames, divTrajectories, labelByTeam, LABEL_FS };
-  }, [division, trajectories, width, height, ghostTrajectory]);
+    return {
+      margin,
+      innerW,
+      innerH,
+      x,
+      y,
+      yTicks,
+      maxGames,
+      divTrajectories,
+      comparisonTraj,
+      labelByTeam,
+      LABEL_FS,
+    };
+  }, [division, trajectories, width, height, ghostTrajectory, comparisonTrajectory]);
 
   if (!chart) {
     return (
@@ -157,7 +204,19 @@ export function DivisionTrajectoryChart({
     );
   }
 
-  const { margin, innerW, innerH, x, y, yTicks, maxGames, divTrajectories, labelByTeam, LABEL_FS } = chart;
+  const {
+    margin,
+    innerW,
+    innerH,
+    x,
+    y,
+    yTicks,
+    maxGames,
+    divTrajectories,
+    comparisonTraj,
+    labelByTeam,
+    LABEL_FS,
+  } = chart;
 
   const lineGen = d3
     .line<{ gamesPlayed: number; wMinusL: number }>()
@@ -199,15 +258,24 @@ export function DivisionTrajectoryChart({
 
   const tooltipData = (() => {
     if (!hoverPoint) return null;
-    const traj = divTrajectories.find((t) => t.teamId === hoverPoint.teamId);
+    // The comparison line might not be in `divTrajectories` (it can come
+    // from another division entirely); fall through to it as a fallback.
+    let traj = divTrajectories.find((t) => t.teamId === hoverPoint.teamId);
+    let resolvedAbbrev: string | undefined;
+    let resolvedColor: string | undefined;
+    if (!traj && comparisonTraj && comparisonTraj.teamId === hoverPoint.teamId) {
+      traj = comparisonTraj;
+      resolvedAbbrev = comparisonAbbrev;
+      resolvedColor = comparisonColor;
+    }
     const p = traj?.points[hoverPoint.pointIdx];
     if (!traj || !p) return null;
     const team = division.teams.find((t) => t.id === traj.teamId);
     const w = (p.gamesPlayed + p.wMinusL) / 2;
     const l = (p.gamesPlayed - p.wMinusL) / 2;
     return {
-      abbrev: team?.abbrev ?? traj.teamId,
-      color: team?.color ?? '#8fa3c0',
+      abbrev: team?.abbrev ?? resolvedAbbrev ?? traj.teamId,
+      color: team?.color ?? resolvedColor ?? '#8fa3c0',
       wins: w,
       losses: l,
       gamesPlayed: p.gamesPlayed,
@@ -385,6 +453,109 @@ export function DivisionTrajectoryChart({
               </g>
             );
           })}
+
+          {/* Comparison line — rendered AFTER the division lines so it sits
+              on top regardless of how the division loop sorted by z. The
+              compared team can be from a different division, in which case
+              its `team` lookup falls back to the explicit comparisonAbbrev
+              / comparisonColor props passed by the team page. */}
+          {comparisonTraj && comparisonTraj.points.length > 0 && (() => {
+            const traj = comparisonTraj;
+            const color = comparisonColor;
+            const isActive = activeHover === traj.teamId;
+            const isDimmed = activeHover && activeHover !== traj.teamId;
+            const label = labelByTeam.get(traj.teamId);
+            const last = traj.points[traj.points.length - 1];
+            return (
+              <g
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={() => handleHover(traj.teamId)}
+                onMouseLeave={() => handleHover(null)}
+                onMouseMove={(e) => handleMove(e, traj)}
+                onClick={() => navigate(`/team/${traj.teamId}`)}
+              >
+                <path
+                  d={lineGen(traj.points) ?? undefined}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={14}
+                />
+                <path
+                  d={lineGen(traj.points) ?? undefined}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={isActive ? 3.4 : 2.2}
+                  strokeOpacity={isDimmed ? 0.22 : 0.98}
+                  pathLength={1}
+                  style={{
+                    strokeDasharray: 1,
+                    strokeDashoffset: 1 - drawProgress,
+                    transition: 'stroke-dashoffset 900ms ease-out',
+                    filter: isActive ? `drop-shadow(0 0 4px ${color})` : undefined,
+                  }}
+                />
+                {hoverPoint && hoverPoint.teamId === traj.teamId && (() => {
+                  const p = traj.points[hoverPoint.pointIdx];
+                  if (!p) return null;
+                  return (
+                    <circle
+                      cx={x(p.gamesPlayed)}
+                      cy={y(p.wMinusL)}
+                      r={5}
+                      fill={color}
+                      pointerEvents="none"
+                    />
+                  );
+                })()}
+                {last && label && Math.abs(label.labelY - label.anchorY) > 1 && (
+                  <line
+                    x1={x(last.gamesPlayed)}
+                    y1={label.anchorY}
+                    x2={x(last.gamesPlayed) + 4}
+                    y2={label.labelY}
+                    stroke={color}
+                    strokeWidth={0.75}
+                    strokeOpacity={isDimmed ? 0.25 : 0.6}
+                  />
+                )}
+                {last && label && (
+                  <text
+                    x={x(last.gamesPlayed) + 6}
+                    y={label.labelY}
+                    dy="0.32em"
+                    fontSize={LABEL_FS}
+                    fontFamily="var(--mono)"
+                    fontWeight={isActive ? 700 : 600}
+                    fill={color}
+                    opacity={isDimmed ? 0.4 : 1}
+                  >
+                    {comparisonAbbrev ?? traj.teamId}
+                  </text>
+                )}
+                {onGameClick && traj.points.map((p, i) => (
+                  <circle
+                    key={`cmp-hit-${i}`}
+                    cx={x(p.gamesPlayed)}
+                    cy={y(p.wMinusL)}
+                    r={6}
+                    fill="transparent"
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onGameClick({
+                        teamId: traj.teamId,
+                        gameIndex: i,
+                        gamesPlayed: p.gamesPlayed,
+                        wMinusL: p.wMinusL,
+                        date: p.date,
+                        gamePk: p.gamePk,
+                      });
+                    }}
+                  />
+                ))}
+              </g>
+            );
+          })()}
 
           {/* X axis: game # label bottom */}
           <text

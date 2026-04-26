@@ -24,6 +24,16 @@ interface Props {
   primaryTeamAbbrev?: string;
   /** User's secondary team — lightest callout when different from current/primary. */
   secondaryTeamAbbrev?: string;
+  /**
+   * Per-page transient comparison team (set via the team page's "Compare to…"
+   * dropdown). Picks up an outlined-callout style ranked just below the
+   * current team so a fan can quickly see "us vs them" against the league.
+   * Distinct from `secondaryTeamAbbrev`, which is a sticky preference for
+   * cross-page emphasis. Wins over secondary if the same team would
+   * otherwise match both — comparison is what the user is actively asking
+   * about right now.
+   */
+  comparisonTeamAbbrev?: string | null;
   /** Override the computed [min, max] value-axis domain. Used to share the
    *  x-scale with the per-player strip plot below so the team's dot + tick
    *  line up at the same x across both charts. */
@@ -41,7 +51,7 @@ interface Props {
   height?: number;
 }
 
-type FeatureKind = 'current' | 'primary' | 'secondary' | null;
+type FeatureKind = 'current' | 'comparison' | 'primary' | 'secondary' | null;
 
 /**
  * Strip-plot (one dot per team) along a horizontal axis of the stat value.
@@ -58,6 +68,7 @@ export function StatDistributionChart({
   currentTeamAbbrev,
   primaryTeamAbbrev,
   secondaryTeamAbbrev,
+  comparisonTeamAbbrev,
   xDomain,
   detail = 'full',
   height,
@@ -95,14 +106,19 @@ export function StatDistributionChart({
     const cur = currentTeamAbbrev?.toUpperCase() ?? '';
     const pri = primaryTeamAbbrev?.toUpperCase() ?? '';
     const sec = secondaryTeamAbbrev?.toUpperCase() ?? '';
+    const cmp = comparisonTeamAbbrev?.toUpperCase() ?? '';
     return (abbrev: string): FeatureKind => {
       const u = abbrev.toUpperCase();
       if (u === cur) return 'current';
+      // Comparison wins over primary/secondary when they collide. The
+      // user is actively interrogating this team right now via the
+      // dropdown — it should outrank the cross-page sticky prefs.
+      if (cmp && u === cmp) return 'comparison';
       if (u === pri) return 'primary';
       if (u === sec) return 'secondary';
       return null;
     };
-  }, [currentTeamAbbrev, primaryTeamAbbrev, secondaryTeamAbbrev]);
+  }, [currentTeamAbbrev, primaryTeamAbbrev, secondaryTeamAbbrev, comparisonTeamAbbrev]);
 
   const layout = useMemo(() => {
     // Horizontal padding is constant across spark/full so the x-scale
@@ -219,8 +235,13 @@ export function StatDistributionChart({
           {[...entries]
             .map((e, i) => ({ e, i, kind: featureKind(e.teamAbbrev) }))
             .sort((a, b) => {
+              // current > comparison > primary > secondary > none.
+              // Comparison sits one tier below current — it's the pair the
+              // user is actively asking about, but the page is still
+              // anchored on the current team.
               const order: Record<string, number> = {
-                current: 4,
+                current: 5,
+                comparison: 4,
                 primary: 3,
                 secondary: 2,
               };
@@ -233,6 +254,12 @@ export function StatDistributionChart({
                   switch (kind) {
                     case 'current':
                       return { r: 5, strokeWidth: 1.75, strokeColor: '#0a1628', fill: e.teamColor };
+                    case 'comparison':
+                      // Hollow-style outline at primary's size — same dark
+                      // outline as current, but the fill is the team color
+                      // at reduced alpha so the dot reads as "outlined" vs
+                      // "filled" against current's solid disc.
+                      return { r: 4, strokeWidth: 1.5, strokeColor: '#0a1628', fill: 'transparent' };
                     case 'primary':
                       return { r: 3.75, strokeWidth: 1.25, strokeColor: '#0a1628', fill: e.teamColor };
                     case 'secondary':
@@ -244,6 +271,12 @@ export function StatDistributionChart({
                 switch (kind) {
                   case 'current':
                     return { r: 7.5, strokeWidth: 2.5, strokeColor: '#0a1628', fill: e.teamColor };
+                  case 'comparison':
+                    // Outlined callout: ring in the team's color, transparent
+                    // fill. Reads visually as "the other team you asked about"
+                    // distinct from current's solid disc and from primary's
+                    // dark-ringed solid fill.
+                    return { r: 7, strokeWidth: 2.25, strokeColor: e.teamColor, fill: 'transparent' };
                   case 'primary':
                     return { r: 6.5, strokeWidth: 2, strokeColor: '#0a1628', fill: e.teamColor };
                   case 'secondary':
@@ -254,9 +287,13 @@ export function StatDistributionChart({
               })();
               const interactive = !isSpark;
               // Which teams get a label rendered above their dot?
-              // Spark: only the current team (an anchor so you can tell which is "yours").
+              // Spark: current team always; comparison team also (so the
+              //   "us vs them" pair stays legible at the row's smaller size).
               // Full: any featured team, plus the currently-hovered dot.
-              const showLabel = kind === 'current' || (!isSpark && (kind !== null || hovered === i));
+              const showLabel =
+                kind === 'current' ||
+                (isSpark && kind === 'comparison') ||
+                (!isSpark && (kind !== null || hovered === i));
               return (
                 <g
                   key={e.teamAbbrev}
