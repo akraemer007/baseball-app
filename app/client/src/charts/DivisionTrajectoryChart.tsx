@@ -294,22 +294,6 @@ export function DivisionTrajectoryChart({
                   stroke="transparent"
                   strokeWidth={14}
                 />
-                {/* Crosshair dot at the hovered game */}
-                {hoverPoint && hoverPoint.teamId === traj.teamId && (() => {
-                  const p = traj.points[hoverPoint.pointIdx];
-                  if (!p) return null;
-                  return (
-                    <circle
-                      cx={x(p.gamesPlayed)}
-                      cy={y(p.wMinusL)}
-                      r={4}
-                      fill={color}
-                      stroke="#0a1628"
-                      strokeWidth={1.5}
-                      pointerEvents="none"
-                    />
-                  );
-                })()}
                 {/* Visible line. pathLength=1 normalizes stroke-dasharray
                     so we can animate stroke-dashoffset from 1 → 0 to
                     draw the line left-to-right regardless of its
@@ -328,6 +312,24 @@ export function DivisionTrajectoryChart({
                     filter: isActive ? `drop-shadow(0 0 4px ${color})` : undefined,
                   }}
                 />
+                {/* Crosshair dot at the hovered game — drawn after the
+                    line so it sits on top. White ring lifts it off the
+                    line so the team color is unambiguously readable. */}
+                {hoverPoint && hoverPoint.teamId === traj.teamId && (() => {
+                  const p = traj.points[hoverPoint.pointIdx];
+                  if (!p) return null;
+                  return (
+                    <circle
+                      cx={x(p.gamesPlayed)}
+                      cy={y(p.wMinusL)}
+                      r={5}
+                      fill={color}
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                      pointerEvents="none"
+                    />
+                  );
+                })()}
                 {/* Leader line from line end to the shifted label (if any) */}
                 {last && label && Math.abs(label.labelY - label.anchorY) > 1 && (
                   <line
