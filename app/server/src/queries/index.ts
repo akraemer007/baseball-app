@@ -107,21 +107,45 @@ interface DivisionTrajectoryRow {
   cum_wins: number;
   cum_losses: number;
   w_minus_l: number;
+  /** game_pk of the game played on as_of_date for this team. NULL for
+   *  rare doubleheader days where the join can't disambiguate, in which
+   *  case we pick the smaller game_pk. Drives the click-to-drawer path
+   *  in DivisionTrajectoryChart (FEAT-3). */
+  game_pk: number | null;
 }
 
 // ---- /api/league/divisions -------------------------------------------------
 
 export async function getLeagueFromWarehouse(season: number): Promise<LeagueResponse> {
+  // CTE picks one game_pk per (season, date, team) so doubleheader days
+  // don't multiply trajectory rows. Plain Postgres-compatible SQL — no
+  // Delta-only idioms (per CLAUDE.md pipeline portability rule).
   const rows = await query<DivisionTrajectoryRow>(
-    `SELECT season, division, league, team_id, team_abbrev, team_name,
-            primary_color, as_of_date, games_played, cum_wins, cum_losses, w_minus_l
-       FROM gold_division_trajectory
-      WHERE season = ${season}
-      ORDER BY division, team_abbrev, games_played`
+    `WITH team_game_pk AS (
+       SELECT season, game_date, team_id, MIN(game_pk) AS game_pk
+         FROM (
+           SELECT season, game_date, home_team_id AS team_id, game_pk
+             FROM silver_game WHERE status = 'Final'
+           UNION ALL
+           SELECT season, game_date, away_team_id AS team_id, game_pk
+             FROM silver_game WHERE status = 'Final'
+         ) tg
+        GROUP BY season, game_date, team_id
+     )
+     SELECT t.season, t.division, t.league, t.team_id, t.team_abbrev,
+            t.team_name, t.primary_color, t.as_of_date, t.games_played,
+            t.cum_wins, t.cum_losses, t.w_minus_l, gp.game_pk
+       FROM gold_division_trajectory t
+       LEFT JOIN team_game_pk gp
+         ON gp.season = t.season
+        AND gp.game_date = t.as_of_date
+        AND gp.team_id = t.team_id
+      WHERE t.season = ${season}
+      ORDER BY t.division, t.team_abbrev, t.games_played`
   );
   // Group into divisions → teams → trajectory points
   const divisions = new Map<string, { id: string; name: string; league: 'AL' | 'NL'; teams: Map<string, { id: string; abbrev: string; name: string; color: string }> }>();
-  const trajectory = new Map<string, { teamId: string; points: { date: string; wMinusL: number; gamesPlayed: number }[] }>();
+  const trajectory = new Map<string, { teamId: string; points: { date: string; wMinusL: number; gamesPlayed: number; gamePk?: number }[] }>();
   for (const r of rows) {
     if (!divisions.has(r.division)) {
       divisions.set(r.division, {
@@ -147,6 +171,7 @@ export async function getLeagueFromWarehouse(season: number): Promise<LeagueResp
       date: r.as_of_date,
       wMinusL: r.w_minus_l,
       gamesPlayed: r.games_played,
+      gamePk: r.game_pk ?? undefined,
     });
   }
   return {

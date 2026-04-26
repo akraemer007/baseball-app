@@ -241,15 +241,6 @@ export default function TeamPage() {
         const trajectoriesForChart = isYoy
           ? (currentTraj ? [currentTraj] : [])
           : leagueQ.data.trajectory;
-        // Map game-date → game_pk using the team's recentGames (last ~10).
-        // Older points silently no-op when clicked; that's an acceptable
-        // limit for now without bloating the team response with per-point
-        // gamePks for the full season.
-        const gamePkByDate = new Map<string, number>();
-        for (const g of recentGames) {
-          const pk = Number.parseInt(g.gameId, 10);
-          if (Number.isFinite(pk)) gamePkByDate.set(g.date, pk);
-        }
         return (
           <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
             <div
@@ -304,8 +295,7 @@ export default function TeamPage() {
               ghostTrajectory={ghost}
               height={240}
               onGameClick={(info) => {
-                const pk = gamePkByDate.get(info.date);
-                if (pk) setSelectedGame({ gamePk: pk });
+                if (info.gamePk) setSelectedGame({ gamePk: info.gamePk });
               }}
             />
             {isYoy && lastYearQ.isLoading && (

@@ -25,9 +25,10 @@ interface Props {
   onHoverTeam?: (teamId: string | null) => void;
   /**
    * Fired when the user clicks a single game-point (the invisible hit-zone
-   * over a data dot) rather than the line itself. The parent uses the
-   * payload to look up a game_pk and open a per-game drawer. Clicks on the
-   * line/abbrev still navigate to the team page as before.
+   * over a data dot) rather than the line itself. Clicks on the
+   * line/abbrev still navigate to the team page as before. `gamePk` may
+   * be undefined for trajectory points the upstream join couldn't
+   * resolve (rare doubleheader edge cases) — caller should no-op then.
    */
   onGameClick?: (info: {
     teamId: string;
@@ -35,6 +36,7 @@ interface Props {
     gamesPlayed: number;
     wMinusL: number;
     date: string;
+    gamePk?: number;
   }) => void;
 }
 
@@ -374,6 +376,7 @@ export function DivisionTrajectoryChart({
                         gamesPlayed: p.gamesPlayed,
                         wMinusL: p.wMinusL,
                         date: p.date,
+                        gamePk: p.gamePk,
                       });
                     }}
                   />

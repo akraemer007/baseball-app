@@ -21,6 +21,10 @@ export interface TrajectoryPoint {
   date: string; // ISO date (YYYY-MM-DD)
   wMinusL: number; // cumulative wins minus losses
   gamesPlayed: number;
+  /** game_pk of the game played on `date`. Optional because
+   *  doubleheader edge cases or upstream join misses may leave it null;
+   *  click-to-drawer just no-ops when missing. */
+  gamePk?: number;
 }
 
 export interface TeamTrajectory {
