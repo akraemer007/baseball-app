@@ -37,3 +37,18 @@ out in the PR body so the reviewer knows to look for cross-cutting risk.
 - Type names: `PascalCase`, no prefix, no `I` for interfaces.
 - Response shape for an HTTP route: `FooResponse`.
 - Row-shaped types for a query result: `FooRow` or `FooEntry`.
+
+## When to collapse the split back
+
+The per-domain split only earns its keep while parallel feature branches
+are colliding on `types.ts`. Reconsider collapsing back to a single
+`types.ts` if any of these become true:
+
+- Multiple domain files end up with ≤3 types each (the split costs more
+  navigation than it saves).
+- Parallel work has dropped off and it's mostly solo again.
+- You find yourself grepping across domain files to trace what a single
+  response returns — that's the split hurting readability.
+
+Un-split is a ~10-minute refactor. Don't preemptively track it as a
+ticket; let the pain signal it.
