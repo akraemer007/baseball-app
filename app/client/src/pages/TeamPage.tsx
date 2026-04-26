@@ -144,14 +144,13 @@ export default function TeamPage() {
 
   const teamLeague = teamDivision?.league ?? null;
 
-  // Self-compare is meaningless — the trajectory line and outlined callouts
-  // would just sit on top of the current team. Auto-clear when the user
-  // navigates to whatever team is currently the comparison.
+  // Reset the comparison whenever the user navigates to a different team
+  // page. Sticking to the previously-selected compare team rarely matches
+  // intent (you came here to look at THIS team, not to keep comparing
+  // against whatever you picked an hour ago).
   useEffect(() => {
-    if (comparisonTeam && comparisonTeam.toUpperCase() === teamId.toUpperCase()) {
-      setComparisonTeam(null);
-    }
-  }, [comparisonTeam, teamId, setComparisonTeam]);
+    setComparisonTeam(null);
+  }, [teamId, setComparisonTeam]);
 
   // Resolve the comparison team's metadata (color, abbrev, trajectory) from
   // the league response. The trajectory always lives in `leagueQ.data` —
@@ -226,52 +225,48 @@ export default function TeamPage() {
       <div className="team-header-row">
         <h1 style={{ color: team.color, margin: 0 }}>{team.name}</h1>
         {leagueQ.data && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.4rem',
-              alignItems: 'flex-end',
-            }}
-          >
-            <select
-              className="team-select"
-              value={team.id}
-              onChange={(e) => navigate(`/team/${e.target.value}`)}
-              aria-label="Switch team"
-            >
-              {leagueQ.data.divisions.map((div) => (
-                <optgroup key={div.id} label={div.name}>
-                  {div.teams.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            <select
-              className="team-select"
-              value={comparisonTeam ?? ''}
-              onChange={(e) =>
-                setComparisonTeam(e.target.value ? e.target.value : null)
-              }
-              aria-label="Compare to team"
-              data-help-anchor="compare-to"
-            >
-              <option value="">Compare to (none)</option>
-              {leagueQ.data.divisions.map((div) => (
-                <optgroup key={div.id} label={div.name}>
-                  {div.teams
-                    .filter((t) => t.id.toUpperCase() !== team.id.toUpperCase())
-                    .map((t) => (
+          <div className="prefs-bar" data-help-anchor="compare-to">
+            <label className="pref-field">
+              <span className="pref-label">Team</span>
+              <select
+                className="team-select pref-select"
+                value={team.id}
+                onChange={(e) => navigate(`/team/${e.target.value}`)}
+              >
+                {leagueQ.data.divisions.map((div) => (
+                  <optgroup key={div.id} label={div.name}>
+                    {div.teams.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name}
                       </option>
                     ))}
-                </optgroup>
-              ))}
-            </select>
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+            <label className="pref-field">
+              <span className="pref-label">Compare to</span>
+              <select
+                className="team-select pref-select"
+                value={comparisonTeam ?? ''}
+                onChange={(e) =>
+                  setComparisonTeam(e.target.value ? e.target.value : null)
+                }
+              >
+                <option value="">(none)</option>
+                {leagueQ.data.divisions.map((div) => (
+                  <optgroup key={div.id} label={div.name}>
+                    {div.teams
+                      .filter((t) => t.id.toUpperCase() !== team.id.toUpperCase())
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
           </div>
         )}
       </div>

@@ -94,23 +94,33 @@ export default function HelpOverlay({ onClose }: { onClose: () => void }) {
 
   // Read DOM positions on mount + on resize/scroll. useLayoutEffect runs
   // before paint so the labels appear in the right place on the first
-  // render — no flash of mis-positioned tooltips.
+  // render — no flash of mis-positioned tooltips. Anchors whose rect is
+  // outside the viewport are filtered out so the tip doesn't keep
+  // floating at the edge of the screen when the user scrolls past.
   useLayoutEffect(() => {
     function measure() {
       const boxes: AnchorBox[] = [];
-      // querySelectorAll spec-collects every match in the page. We only
-      // render copy for ids that have an entry in COPY_BY_ROUTE, so an
-      // unmapped anchor is silently skipped.
+      const vh = window.innerHeight;
+      const vw = window.innerWidth;
       const nodes = document.querySelectorAll<HTMLElement>('[data-help-anchor]');
       const seen = new Set<string>();
       nodes.forEach((node) => {
         const id = node.dataset.helpAnchor;
         if (!id) return;
-        if (seen.has(id)) return; // first match wins for repeated anchors (e.g. percentile-row)
+        if (seen.has(id)) return;
         const copy = copyMap[id];
         if (!copy) return;
         const rect = node.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) return;
+        // Anchor must intersect the viewport at least a little bit (24px
+        // slack so tips don't pop in/out at the very edge while scrolling).
+        const PAD = 24;
+        const offscreen =
+          rect.bottom < PAD ||
+          rect.top > vh - PAD ||
+          rect.right < PAD ||
+          rect.left > vw - PAD;
+        if (offscreen) return;
         seen.add(id);
         boxes.push({ id, rect, copy });
       });

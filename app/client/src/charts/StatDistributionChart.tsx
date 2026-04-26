@@ -240,11 +240,11 @@ export function StatDistributionChart({
                 if (isSpark) {
                   switch (kind) {
                     case 'current':
-                      return { r: 5, strokeWidth: 1.75, strokeColor: '#0a1628', fill: e.teamColor };
                     case 'comparison':
-                      // Ring style — transparent fill, 2px team-color stroke —
-                      // reads distinctly from primary's filled-with-outline.
-                      return { r: 4, strokeWidth: 2, strokeColor: e.teamColor, fill: 'transparent' };
+                      // Comparison gets the same treatment as the team you're
+                      // viewing — solid team-color fill, dark-navy stroke.
+                      // The label above the dot tells them apart.
+                      return { r: 5, strokeWidth: 1.75, strokeColor: '#0a1628', fill: e.teamColor };
                     case 'primary':
                       return { r: 3.75, strokeWidth: 1.25, strokeColor: '#0a1628', fill: e.teamColor };
                     case 'secondary':
@@ -255,9 +255,8 @@ export function StatDistributionChart({
                 }
                 switch (kind) {
                   case 'current':
-                    return { r: 7.5, strokeWidth: 2.5, strokeColor: '#0a1628', fill: e.teamColor };
                   case 'comparison':
-                    return { r: 7, strokeWidth: 2.5, strokeColor: e.teamColor, fill: 'transparent' };
+                    return { r: 7.5, strokeWidth: 2.5, strokeColor: '#0a1628', fill: e.teamColor };
                   case 'primary':
                     return { r: 6.5, strokeWidth: 2, strokeColor: '#0a1628', fill: e.teamColor };
                   case 'secondary':
@@ -307,10 +306,16 @@ export function StatDistributionChart({
                     x={0}
                     y={-10}
                     textAnchor="middle"
-                    fontSize={kind === 'current' ? 11 : 10}
+                    fontSize={kind === 'current' || kind === 'comparison' ? 11 : 10}
                     fontFamily="var(--mono)"
                     fill="var(--text)"
-                    fontWeight={kind === 'current' ? 700 : kind ? 600 : 500}
+                    fontWeight={
+                      kind === 'current' || kind === 'comparison'
+                        ? 700
+                        : kind
+                          ? 600
+                          : 500
+                    }
                     opacity={showLabel ? 1 : 0}
                     style={{ pointerEvents: 'none' }}
                   >
