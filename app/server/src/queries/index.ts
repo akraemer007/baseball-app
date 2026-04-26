@@ -7,6 +7,7 @@
 
 import type {
   BulkStatDistributionResponse,
+  GameSummaryResponse,
   GameType,
   HrRaceResponse,
   LeagueResponse,
@@ -19,6 +20,12 @@ import type {
   TeamResponse,
 } from '../../../shared/types/index.js';
 import { query } from '../lib/warehouse.js';
+
+/** Savant box-score URL — duplicated server-side so we don't import from
+ *  client code. Kept in sync with app/client/src/lib/savant.ts. */
+function savantBoxScoreUrl(gamePk: string | number): string {
+  return `https://baseballsavant.mlb.com/gamefeed?gamePk=${gamePk}&hf=boxScore`;
+}
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -1086,5 +1093,129 @@ export async function getProjectionsFromWarehouse(): Promise<ProjectionsResponse
             ? g.home_abbrev
             : g.away_abbrev,
     })),
+  };
+}
+
+// ---- /api/game/:gamePk/summary --------------------------------------------
+
+interface GameRow {
+  game_pk: number;
+  game_date: string;
+  home_team_id: number;
+  home_abbrev: string;
+  home_color: string;
+  home_score: number;
+  away_team_id: number;
+  away_abbrev: string;
+  away_color: string;
+  away_score: number;
+}
+
+interface PitcherDecisionRow {
+  player_id: number;
+  player_name: string;
+  decision: string | null;
+}
+
+interface BatterLineRow {
+  player_id: number;
+  player_name: string;
+  at_bats: number | null;
+  hits: number | null;
+  doubles: number | null;
+  triples: number | null;
+  home_runs: number | null;
+  rbi: number | null;
+  total_bases: number | null;
+}
+
+/** Build a free-form batter line, e.g. "3-for-4, HR, 2 RBI". */
+function formatBatterLine(row: BatterLineRow): string {
+  const ab = row.at_bats ?? 0;
+  const h = row.hits ?? 0;
+  const bits: string[] = [`${h}-for-${ab}`];
+  const hr = row.home_runs ?? 0;
+  if (hr > 0) bits.push(hr === 1 ? 'HR' : `${hr} HR`);
+  const tr = row.triples ?? 0;
+  if (tr > 0) bits.push(tr === 1 ? '3B' : `${tr} 3B`);
+  const db = row.doubles ?? 0;
+  if (db > 0) bits.push(db === 1 ? '2B' : `${db} 2B`);
+  const rbi = row.rbi ?? 0;
+  if (rbi > 0) bits.push(`${rbi} RBI`);
+  return bits.join(', ');
+}
+
+export async function getGameSummaryFromWarehouse(
+  gamePk: number,
+): Promise<GameSummaryResponse> {
+  const [game] = await query<GameRow>(
+    `SELECT g.game_pk, g.game_date,
+            g.home_team_id, h.abbrev AS home_abbrev, h.primary_color AS home_color,
+            g.home_score,
+            g.away_team_id, a.abbrev AS away_abbrev, a.primary_color AS away_color,
+            g.away_score
+       FROM silver_game g
+       JOIN silver_team h ON h.team_id = g.home_team_id
+       JOIN silver_team a ON a.team_id = g.away_team_id
+      WHERE g.game_pk = ${gamePk}
+        AND g.status = 'Final'
+      LIMIT 1`,
+  );
+  if (!game) {
+    throw new Error(`Game not found or not final: gamePk=${gamePk}`);
+  }
+
+  const [decisions, batters] = await Promise.all([
+    query<PitcherDecisionRow>(
+      `SELECT player_id, player_name, decision
+         FROM silver_player_game_pitching
+        WHERE game_pk = ${gamePk}
+          AND decision IN ('W', 'L')`,
+    ),
+    // Top performer = highest total_bases; if tied/null, fall back to most hits.
+    query<BatterLineRow>(
+      `SELECT player_id, player_name,
+              at_bats, hits, doubles, triples, home_runs, rbi, total_bases
+         FROM silver_player_game_batting
+        WHERE game_pk = ${gamePk}
+          AND COALESCE(at_bats, 0) > 0
+        ORDER BY COALESCE(total_bases, 0) DESC,
+                 COALESCE(hits, 0) DESC,
+                 COALESCE(rbi, 0) DESC
+        LIMIT 1`,
+    ),
+  ]);
+
+  const win = decisions.find((d) => d.decision === 'W');
+  const loss = decisions.find((d) => d.decision === 'L');
+  const top = batters[0];
+
+  return {
+    gamePk: game.game_pk,
+    gameDate: game.game_date,
+    home: {
+      abbrev: game.home_abbrev,
+      score: game.home_score,
+      color: game.home_color,
+    },
+    away: {
+      abbrev: game.away_abbrev,
+      score: game.away_score,
+      color: game.away_color,
+    },
+    winningPitcher: win
+      ? { id: String(win.player_id), name: win.player_name }
+      : undefined,
+    losingPitcher: loss
+      ? { id: String(loss.player_id), name: loss.player_name }
+      : undefined,
+    topPerformer: top
+      ? {
+          id: String(top.player_id),
+          name: top.player_name,
+          line: formatBatterLine(top),
+        }
+      : undefined,
+    boxScoreUrl: savantBoxScoreUrl(game.game_pk),
   };
 }

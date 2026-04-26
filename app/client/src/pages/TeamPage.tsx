@@ -19,6 +19,7 @@ import type {
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
 import { StatDistributionChart } from '../charts/StatDistributionChart';
 import { TeamPlayerDistribution } from '../charts/TeamPlayerDistribution';
+import { GameDrawer } from '../components/GameDrawer';
 import { InfoTip } from '../components/InfoTip';
 import { formatStat, formatSlashStat } from '../lib/stats';
 
@@ -100,6 +101,7 @@ export default function TeamPage() {
   const [expandedStat, setExpandedStat] = useState<string | null>(null);
   const [trajectoryMode, setTrajectoryMode] = useState<'division' | 'yoy'>('division');
   const [statScope, setStatScope] = useState<'mlb' | 'league'>('mlb');
+  const [selectedGame, setSelectedGame] = useState<{ gamePk: number } | null>(null);
   const { primaryTeam, secondaryTeam } = usePreferences();
 
   const teamQ = useQuery<TeamResponse>({
@@ -231,8 +233,17 @@ export default function TeamPage() {
         const trajectoriesForChart = isYoy
           ? (currentTraj ? [currentTraj] : [])
           : leagueQ.data.trajectory;
+        // Map game-date → game_pk using the team's recentGames (last ~10).
+        // Older points silently no-op when clicked; that's an acceptable
+        // limit for now without bloating the team response with per-point
+        // gamePks for the full season.
+        const gamePkByDate = new Map<string, number>();
+        for (const g of recentGames) {
+          const pk = Number.parseInt(g.gameId, 10);
+          if (Number.isFinite(pk)) gamePkByDate.set(g.date, pk);
+        }
         return (
-          <div className="card">
+          <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
             <div
               style={{
                 display: 'flex',
@@ -284,6 +295,10 @@ export default function TeamPage() {
               highlightTeamId={team.id}
               ghostTrajectory={ghost}
               height={240}
+              onGameClick={(info) => {
+                const pk = gamePkByDate.get(info.date);
+                if (pk) setSelectedGame({ gamePk: pk });
+              }}
             />
             {isYoy && lastYearQ.isLoading && (
               <p className="muted" style={{ fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
@@ -294,6 +309,12 @@ export default function TeamPage() {
               <p className="muted" style={{ fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
                 No {season - 1} data for {team.abbrev}.
               </p>
+            )}
+            {selectedGame && (
+              <GameDrawer
+                gamePk={selectedGame.gamePk}
+                onClose={() => setSelectedGame(null)}
+              />
             )}
           </div>
         );

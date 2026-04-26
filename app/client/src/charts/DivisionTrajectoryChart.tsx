@@ -23,6 +23,19 @@ interface Props {
   ghostTrajectory?: TeamTrajectory | null;
   /** Optional external hover setter so the parent can sync with team chips. */
   onHoverTeam?: (teamId: string | null) => void;
+  /**
+   * Fired when the user clicks a single game-point (the invisible hit-zone
+   * over a data dot) rather than the line itself. The parent uses the
+   * payload to look up a game_pk and open a per-game drawer. Clicks on the
+   * line/abbrev still navigate to the team page as before.
+   */
+  onGameClick?: (info: {
+    teamId: string;
+    gameIndex: number;
+    gamesPlayed: number;
+    wMinusL: number;
+    date: string;
+  }) => void;
 }
 
 /**
@@ -38,6 +51,7 @@ export function DivisionTrajectoryChart({
   highlightTeamId = null,
   ghostTrajectory = null,
   onHoverTeam,
+  onGameClick,
 }: Props) {
   const navigate = useNavigate();
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -339,6 +353,31 @@ export function DivisionTrajectoryChart({
                     {team?.abbrev ?? traj.teamId}
                   </text>
                 )}
+                {/* Per-point click hit-zones. Invisible circles sized for
+                    fingertip targets — clicking one stops propagation so
+                    the surrounding <g>'s navigate-to-team handler does
+                    NOT fire. Only attached when onGameClick is provided
+                    so non-team-page usages keep the original behavior. */}
+                {onGameClick && traj.points.map((p, i) => (
+                  <circle
+                    key={`hit-${i}`}
+                    cx={x(p.gamesPlayed)}
+                    cy={y(p.wMinusL)}
+                    r={6}
+                    fill="transparent"
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onGameClick({
+                        teamId: traj.teamId,
+                        gameIndex: i,
+                        gamesPlayed: p.gamesPlayed,
+                        wMinusL: p.wMinusL,
+                        date: p.date,
+                      });
+                    }}
+                  />
+                ))}
               </g>
             );
           })}

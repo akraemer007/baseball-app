@@ -48,3 +48,17 @@ export interface HrRaceResponse {
   season: number;
   leaders: HrRaceEntry[];
 }
+
+export interface GameSummaryResponse {
+  gamePk: number;
+  /** ISO date (YYYY-MM-DD). */
+  gameDate: string;
+  home: { abbrev: string; score: number; color: string };
+  away: { abbrev: string; score: number; color: string };
+  winningPitcher?: { id: string; name: string };
+  losingPitcher?: { id: string; name: string };
+  /** Game's standout batter — free-form line, e.g. "3-for-4, HR, 2 RBI". */
+  topPerformer?: { id: string; name: string; line: string };
+  /** Savant box-score URL for this gamePk. */
+  boxScoreUrl: string;
+}

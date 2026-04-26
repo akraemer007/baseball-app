@@ -9,6 +9,7 @@ import teamRouter from './routes/team.js';
 import playerRouter from './routes/player.js';
 import newsRouter from './routes/news.js';
 import projectionsRouter from './routes/projections.js';
+import gameRouter from './routes/game.js';
 
 const app = express();
 const startedAt = Date.now();
@@ -43,6 +44,7 @@ app.use('/api/team', teamRouter);
 app.use('/api/player', playerRouter);
 app.use('/api/news', newsRouter);
 app.use('/api/projections', projectionsRouter);
+app.use('/api/game', gameRouter);
 
 // Fallback 404 for unknown API paths so they don't get swallowed by the SPA.
 app.use('/api', (_req, res) => {

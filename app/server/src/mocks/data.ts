@@ -3,6 +3,7 @@
 
 import type {
   Division,
+  GameSummaryResponse,
   LeagueResponse,
   PlayerResponse,
   ProjectionsResponse,
@@ -485,4 +486,32 @@ export function getProjections(): ProjectionsResponse {
     };
   });
   return { date: today, games };
+}
+
+/** Stub for /api/game/:gamePk/summary in mock mode. Deterministic per gamePk
+ *  so the drawer renders something plausible without a warehouse. */
+export function getGameSummary(gamePk: number): GameSummaryResponse {
+  const teams = Object.values(TEAMS);
+  const r = mulberry32(gamePk || 1);
+  const home = teams[Math.floor(r() * teams.length)];
+  let away = teams[Math.floor(r() * teams.length)];
+  if (away.id === home.id) {
+    away = teams[(teams.indexOf(away) + 1) % teams.length];
+  }
+  const homeScore = Math.floor(r() * 10);
+  const awayScore = Math.floor(r() * 10);
+  // Deterministic-ish recent date.
+  const today = new Date();
+  today.setUTCDate(today.getUTCDate() - (gamePk % 14));
+  const gameDate = today.toISOString().slice(0, 10);
+  return {
+    gamePk,
+    gameDate,
+    home: { abbrev: home.abbrev, score: homeScore, color: home.color },
+    away: { abbrev: away.abbrev, score: awayScore, color: away.color },
+    winningPitcher: { id: '0', name: 'Mock W. Pitcher' },
+    losingPitcher: { id: '1', name: 'Mock L. Pitcher' },
+    topPerformer: { id: '2', name: 'Mock Slugger', line: '3-for-4, HR, 2 RBI' },
+    boxScoreUrl: `https://baseballsavant.mlb.com/gamefeed?gamePk=${gamePk}&hf=boxScore`,
+  };
 }
