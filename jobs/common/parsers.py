@@ -137,6 +137,112 @@ def parse_linescore_from_schedule(payloads: Iterable[dict]) -> list[dict]:
     return list(out.values())
 
 
+# --- Play-by-play -----------------------------------------------------------
+
+
+def _runners_bitmap(post_on_first: bool, post_on_second: bool, post_on_third: bool) -> str | None:
+    """Encode base occupancy as 'NB,NB,...' or None if bases empty.
+
+    Postgres-friendly STRING (no STRUCT/MAP). Examples:
+      bases empty       → None
+      runner on 1st     → '1B'
+      bases loaded      → '1B,2B,3B'
+    """
+    parts: list[str] = []
+    if post_on_first:
+        parts.append("1B")
+    if post_on_second:
+        parts.append("2B")
+    if post_on_third:
+        parts.append("3B")
+    return ",".join(parts) if parts else None
+
+
+def parse_play_by_play(
+    payload: dict,
+    game_pk: int,
+    season: int | None,
+    game_date: str | None,
+) -> list[dict]:
+    """Flatten an `/game/{pk}/playByPlay` payload into one row per play.
+
+    The MLB API's `allPlays[]` is ordered. Each entry has:
+      - `result.event` / `description` / `homeScore` / `awayScore`  (state AFTER)
+      - `about.inning` / `halfInning` ('top' | 'bottom') / `atBatIndex`
+      - `count.outs`  (outs after the play completes)
+      - `matchup.batter.id` / `pitcher.id`
+      - `matchup.postOnFirst.id` / `postOnSecond.id` / `postOnThird.id`  (post-state)
+
+    "Before" columns are derived by carrying the previous play's post-state
+    forward. We reset baserunner / score state at half-inning boundaries
+    (no carry across innings). Defensive on missing fields — the API
+    occasionally truncates suspended games and doubleheaders mid-payload;
+    prefer NULL over crashing.
+    """
+    plays = payload.get("allPlays") or []
+    rows: list[dict] = []
+
+    # Carry-forward state. Scores accumulate across innings; baserunners and
+    # outs reset at the half-inning boundary.
+    prev_home_score = 0
+    prev_away_score = 0
+    prev_runners_post: str | None = None
+    prev_outs_post = 0
+    prev_inning: int | None = None
+    prev_half: str | None = None
+
+    for idx, play in enumerate(plays):
+        about = play.get("about") or {}
+        result = play.get("result") or {}
+        count = play.get("count") or {}
+        matchup = play.get("matchup") or {}
+
+        inning_raw = about.get("inning")
+        half = about.get("halfInning")  # 'top' | 'bottom'
+        inning = safe_int(inning_raw) if inning_raw is not None else None
+
+        # Reset carry-forward at half-inning boundary. The API gives us
+        # one play stream per game, but the silver consumer should see
+        # outs_before=0 and runners_before=NULL at the start of each half.
+        new_half = (inning != prev_inning) or (half != prev_half)
+        if new_half:
+            prev_runners_post = None
+            prev_outs_post = 0
+
+        batter = (matchup.get("batter") or {}).get("id")
+        pitcher = (matchup.get("pitcher") or {}).get("id")
+
+        rows.append({
+            "game_pk": int(game_pk),
+            "play_index": idx,
+            "inning": inning,
+            "half_inning": half,
+            "batter_id": int(batter) if batter is not None else None,
+            "pitcher_id": int(pitcher) if pitcher is not None else None,
+            "event": result.get("event"),
+            "description": result.get("description"),
+            "outs_before": prev_outs_post,
+            "home_score_before": prev_home_score,
+            "away_score_before": prev_away_score,
+            "runners_before": prev_runners_post,
+            "season": int(season) if season is not None else None,
+            "game_date": game_date,
+        })
+
+        # Advance carry-forward state from this play's POST values.
+        post_first = bool((matchup.get("postOnFirst") or {}).get("id"))
+        post_second = bool((matchup.get("postOnSecond") or {}).get("id"))
+        post_third = bool((matchup.get("postOnThird") or {}).get("id"))
+        prev_runners_post = _runners_bitmap(post_first, post_second, post_third)
+        prev_outs_post = safe_int(count.get("outs"))
+        prev_home_score = safe_int(result.get("homeScore"), default=prev_home_score)
+        prev_away_score = safe_int(result.get("awayScore"), default=prev_away_score)
+        prev_inning = inning
+        prev_half = half
+
+    return rows
+
+
 def parse_boxscore(payload: dict, game_pk: int, game_date: str) -> tuple[list[dict], list[dict], list[dict]]:
     """Return (team_game_rows, batting_rows, pitching_rows)."""
     teams = payload.get("teams", {})

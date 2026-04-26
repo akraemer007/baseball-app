@@ -85,6 +85,10 @@ class MlbStatsApiClient:
     def boxscore(self, game_pk: int) -> ApiResult:
         return self._get(f"/game/{game_pk}/boxscore")
 
+    def play_by_play(self, game_pk: int) -> ApiResult:
+        """Per-game play-by-play feed. `payload['allPlays']` is the array of plays."""
+        return self._get(f"/game/{game_pk}/playByPlay")
+
     def linescore(self, game_pk: int) -> ApiResult:
         return self._get(f"/game/{game_pk}/linescore")
 

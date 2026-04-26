@@ -31,9 +31,29 @@ resources:
               schema: ${var.schema}
           environment_key: default_env
 
-        - task_key: build_gold
+        - task_key: ingest_playbyplay
           depends_on:
             - task_key: refine_silver
+          notebook_task:
+            notebook_path: ../jobs/ingest/fetch_playbyplay.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: default_env
+
+        - task_key: refine_silver_playbyplay
+          depends_on:
+            - task_key: ingest_playbyplay
+          notebook_task:
+            notebook_path: ../jobs/refine/silver_playbyplay.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: default_env
+
+        - task_key: build_gold
+          depends_on:
+            - task_key: refine_silver_playbyplay
           sql_task:
             warehouse_id: ${var.warehouse_id}
             file:
