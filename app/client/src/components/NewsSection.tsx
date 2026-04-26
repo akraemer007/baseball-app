@@ -155,10 +155,7 @@ export default function NewsSection() {
                     className={`proj-card${p ? ' proj-card-primary' : s ? ' proj-card-secondary' : ''}${isFinal ? ' proj-card-final' : ''}`}
                     style={
                       p && primaryInfo
-                        ? {
-                            borderLeft: `3px solid ${primaryInfo.color}`,
-                            background: `linear-gradient(to right, ${primaryInfo.color}14, var(--bg-elev) 40%)`,
-                          }
+                        ? { borderLeft: `3px solid ${primaryInfo.color}` }
                         : s && secondaryInfo
                           ? { borderLeft: `3px solid ${secondaryInfo.color}` }
                           : undefined
@@ -218,6 +215,13 @@ export default function NewsSection() {
                         <div
                           className="proj-prob-fill"
                           style={{ width: `${homePct}%`, background: homeColor }}
+                        />
+                        {/* Tick at the Elo boundary so the exact color
+                            split is obvious at a glance. */}
+                        <div
+                          className="proj-prob-tick"
+                          style={{ left: `${awayPct}%` }}
+                          aria-hidden
                         />
                       </div>
                       <div className="proj-prob-labels mono">

@@ -930,16 +930,29 @@ table.stat-table td.top-performer {
 }
 
 .proj-prob-track {
+  position: relative;
   display: flex;
   height: 3px;
   background: var(--border);
   border-radius: 2px;
-  overflow: hidden;
 }
 
 .proj-prob-fill {
   height: 100%;
   transition: width 200ms ease;
+}
+
+/* Tick at the Elo boundary — extends 2px above + below the track so it
+   reads clearly against either team's color. 2px wide, dark navy. */
+.proj-prob-tick {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 7px;
+  background: var(--text);
+  transform: translateX(-1px);
+  border-radius: 1px;
+  pointer-events: none;
 }
 
 .proj-prob-labels {
