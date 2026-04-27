@@ -297,44 +297,52 @@ if linescore_rows:
 
 # COMMAND ----------
 # Static team metadata — MLB teams change divisions so rarely that maintaining this
-# by hand is simpler than fetching on every run. MLBAM team IDs + primary/secondary colors.
+# by hand is simpler than fetching on every run.
+#
+# Each tuple: (team_id, canonical_abbrev, name, league, division,
+#              primary_color, secondary_color, aliases).
+# `aliases` is the list of OTHER abbrevs the team is known by in source
+# data we ingest (e.g. Baseball Savant uses 'AZ' for the Diamondbacks
+# and 'ATH' for the Athletics, while we canonicalize to 'ARI' and
+# 'OAK'). Joins that need to bridge between sources match on
+# `t.abbrev = src.abbrev OR ARRAY_CONTAINS(t.aliases, src.abbrev)`.
 TEAM_META = [
     # AL East
-    (147, "NYY", "New York Yankees", "AL", "AL East", "#003087", "#E4002C"),
-    (111, "BOS", "Boston Red Sox", "AL", "AL East", "#BD3039", "#0C2340"),
-    (139, "TB",  "Tampa Bay Rays", "AL", "AL East", "#092C5C", "#8FBCE6"),
-    (141, "TOR", "Toronto Blue Jays", "AL", "AL East", "#134A8E", "#E8291C"),
-    (110, "BAL", "Baltimore Orioles", "AL", "AL East", "#DF4601", "#000000"),
+    (147, "NYY", "New York Yankees",     "AL", "AL East",    "#003087", "#E4002C", []),
+    (111, "BOS", "Boston Red Sox",       "AL", "AL East",    "#BD3039", "#0C2340", []),
+    (139, "TB",  "Tampa Bay Rays",       "AL", "AL East",    "#092C5C", "#8FBCE6", ["TBR"]),
+    (141, "TOR", "Toronto Blue Jays",    "AL", "AL East",    "#134A8E", "#E8291C", []),
+    (110, "BAL", "Baltimore Orioles",    "AL", "AL East",    "#DF4601", "#000000", []),
     # AL Central
-    (145, "CWS", "Chicago White Sox", "AL", "AL Central", "#27251F", "#C4CED4"),
-    (114, "CLE", "Cleveland Guardians", "AL", "AL Central", "#00385D", "#E50022"),
-    (116, "DET", "Detroit Tigers", "AL", "AL Central", "#0C2340", "#FA4616"),
-    (118, "KC",  "Kansas City Royals", "AL", "AL Central", "#004687", "#BD9B60"),
-    (142, "MIN", "Minnesota Twins", "AL", "AL Central", "#002B5C", "#D31145"),
+    (145, "CWS", "Chicago White Sox",    "AL", "AL Central", "#27251F", "#C4CED4", ["CHW"]),
+    (114, "CLE", "Cleveland Guardians",  "AL", "AL Central", "#00385D", "#E50022", []),
+    (116, "DET", "Detroit Tigers",       "AL", "AL Central", "#0C2340", "#FA4616", []),
+    (118, "KC",  "Kansas City Royals",   "AL", "AL Central", "#004687", "#BD9B60", ["KCR"]),
+    (142, "MIN", "Minnesota Twins",      "AL", "AL Central", "#002B5C", "#D31145", []),
     # AL West
-    (117, "HOU", "Houston Astros", "AL", "AL West", "#EB6E1F", "#002D62"),
-    (140, "TEX", "Texas Rangers", "AL", "AL West", "#003278", "#C0111F"),
-    (136, "SEA", "Seattle Mariners", "AL", "AL West", "#0C2C56", "#005C5C"),
-    (108, "LAA", "Los Angeles Angels", "AL", "AL West", "#BA0021", "#003263"),
-    (133, "OAK", "Athletics", "AL", "AL West", "#003831", "#EFB21E"),
+    (117, "HOU", "Houston Astros",       "AL", "AL West",    "#EB6E1F", "#002D62", []),
+    (140, "TEX", "Texas Rangers",        "AL", "AL West",    "#003278", "#C0111F", []),
+    (136, "SEA", "Seattle Mariners",     "AL", "AL West",    "#0C2C56", "#005C5C", []),
+    (108, "LAA", "Los Angeles Angels",   "AL", "AL West",    "#BA0021", "#003263", []),
+    (133, "OAK", "Athletics",            "AL", "AL West",    "#003831", "#EFB21E", ["ATH"]),
     # NL East
-    (144, "ATL", "Atlanta Braves", "NL", "NL East", "#CE1141", "#13274F"),
-    (146, "MIA", "Miami Marlins", "NL", "NL East", "#00A3E0", "#EF3340"),
-    (121, "NYM", "New York Mets", "NL", "NL East", "#002D72", "#FF5910"),
-    (143, "PHI", "Philadelphia Phillies", "NL", "NL East", "#E81828", "#002D72"),
-    (120, "WSH", "Washington Nationals", "NL", "NL East", "#AB0003", "#14225A"),
+    (144, "ATL", "Atlanta Braves",       "NL", "NL East",    "#CE1141", "#13274F", []),
+    (146, "MIA", "Miami Marlins",        "NL", "NL East",    "#00A3E0", "#EF3340", []),
+    (121, "NYM", "New York Mets",        "NL", "NL East",    "#002D72", "#FF5910", []),
+    (143, "PHI", "Philadelphia Phillies","NL", "NL East",    "#E81828", "#002D72", []),
+    (120, "WSH", "Washington Nationals", "NL", "NL East",    "#AB0003", "#14225A", ["WAS", "WSN"]),
     # NL Central
-    (112, "CHC", "Chicago Cubs", "NL", "NL Central", "#0E3386", "#CC3433"),
-    (113, "CIN", "Cincinnati Reds", "NL", "NL Central", "#C6011F", "#000000"),
-    (158, "MIL", "Milwaukee Brewers", "NL", "NL Central", "#12284B", "#FFC52F"),
-    (134, "PIT", "Pittsburgh Pirates", "NL", "NL Central", "#27251F", "#FDB827"),
-    (138, "STL", "St. Louis Cardinals", "NL", "NL Central", "#C41E3A", "#0C2340"),
+    (112, "CHC", "Chicago Cubs",         "NL", "NL Central", "#0E3386", "#CC3433", []),
+    (113, "CIN", "Cincinnati Reds",      "NL", "NL Central", "#C6011F", "#000000", []),
+    (158, "MIL", "Milwaukee Brewers",    "NL", "NL Central", "#12284B", "#FFC52F", []),
+    (134, "PIT", "Pittsburgh Pirates",   "NL", "NL Central", "#27251F", "#FDB827", []),
+    (138, "STL", "St. Louis Cardinals",  "NL", "NL Central", "#C41E3A", "#0C2340", []),
     # NL West
-    (109, "ARI", "Arizona Diamondbacks", "NL", "NL West", "#A71930", "#E3D4AD"),
-    (115, "COL", "Colorado Rockies", "NL", "NL West", "#33006F", "#C4CED4"),
-    (119, "LAD", "Los Angeles Dodgers", "NL", "NL West", "#005A9C", "#A5ACAF"),
-    (135, "SD",  "San Diego Padres", "NL", "NL West", "#2F241D", "#FFC425"),
-    (137, "SF",  "San Francisco Giants", "NL", "NL West", "#FD5A1E", "#27251F"),
+    (109, "ARI", "Arizona Diamondbacks", "NL", "NL West",    "#A71930", "#E3D4AD", ["AZ"]),
+    (115, "COL", "Colorado Rockies",     "NL", "NL West",    "#33006F", "#C4CED4", []),
+    (119, "LAD", "Los Angeles Dodgers",  "NL", "NL West",    "#005A9C", "#A5ACAF", []),
+    (135, "SD",  "San Diego Padres",     "NL", "NL West",    "#2F241D", "#FFC425", ["SDP"]),
+    (137, "SF",  "San Francisco Giants", "NL", "NL West",    "#FD5A1E", "#27251F", ["SFG"]),
 ]
 
 team_rows = [
@@ -346,6 +354,7 @@ team_rows = [
         "division": t[4],
         "primary_color": t[5],
         "secondary_color": t[6],
+        "aliases": t[7],
     }
     for t in TEAM_META
 ]

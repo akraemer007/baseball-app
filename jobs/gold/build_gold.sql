@@ -185,7 +185,12 @@ agg AS (
         AVG(pc.estimated_woba_using_speedangle) AS xwoba,
         AVG(pc.estimated_ba_using_speedangle)   AS xba
     FROM pa_clean pc
-    JOIN silver_team t ON t.abbrev = pc.batter_team
+    -- Match on canonical abbrev OR any known alias (e.g. Statcast's 'AZ'
+    -- vs silver_team's 'ARI', or 'ATH' vs 'OAK'). silver_team.aliases is
+    -- populated from TEAM_META in silver_transforms.py.
+    JOIN silver_team t
+        ON t.abbrev = pc.batter_team
+        OR array_contains(t.aliases, pc.batter_team)
     GROUP BY pc.season, t.team_id
 )
 SELECT
