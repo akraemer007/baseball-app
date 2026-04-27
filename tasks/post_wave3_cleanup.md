@@ -33,3 +33,37 @@
    suspect: ATH (Statcast) vs OAK (silver_team) for the Athletics,
    or similar 2024+ rename. Diff the two sets and add an alias map
    if needed.
+
+---
+
+## Status (2026-04-27 update)
+
+**✅ Done:**
+- (1) Parallelize ingest — Statcast + transactions now depend on
+  ingest_schedule_and_games instead of refine_silver. PlayByPlay
+  still depends on refine_silver (reads silver_game.status='Final').
+  Commit `9c639f2`.
+- (2) Move recap generation hourly — generate_recaps appended to
+  hourly_refresh_job.yml (mode=all-missing default), morning_recaps
+  job retired. Commit `9c639f2`.
+- (4) Missing 2 team abbrevs — TEAM_META gains aliases column,
+  silver_team picks up `aliases ARRAY<STRING>`. gold_team_expected_stats
+  joins on `t.abbrev = src.abbrev OR ARRAY_CONTAINS(t.aliases, src.abbrev)`.
+  Pre-populated AZ↔ARI, ATH↔OAK plus a few common others (KCR, SDP,
+  SFG, TBR, CHW, WAS, WSN). Commit `e02da83`.
+
+**⏭️ Deferred:**
+- (3) Extend backfill.py for new data sources (playByPlay, Statcast,
+  transactions). Not urgent until a redeploy is actually planned.
+  Note: existing seasons-back backfill only covers schedule + boxscore.
+  PIPE-3-style multi-year for playByPlay would 6× the API call volume
+  (~16k games × playByPlay ≈ ~80k requests at 50ms = ~70 min). Statcast
+  for 6 seasons via weekly windows would be ~180 weekly requests
+  (~30 min wall clock). Transactions multi-year is small. Worth
+  bundling into a single one-shot backfill_all.py later.
+
+**Open follow-up worth tracking:**
+- ingest_playbyplay can also run parallel to refine_silver if
+  fetch_playbyplay.py reads bronze_schedule (which has the same
+  status info) instead of silver_game. ~30 min refactor, optional
+  pipeline-portability win.
