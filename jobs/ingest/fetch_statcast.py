@@ -91,31 +91,23 @@ def _generate_windows(season: int) -> list[tuple[str, str]]:
     return out
 
 
-# Gate on whether silver_game has any Final regular-season games inside
-# each window. Skips empty future weeks during the in-season period.
-finals_dates = spark.sql(f"""
-    SELECT DISTINCT CAST(game_date AS STRING) AS d
-    FROM {fq}.silver_game
-    WHERE season = {season} AND status = 'Final' AND game_type = 'R'
-""").collect()
-final_date_set = {r.d for r in finals_dates}
-print(f"season {season}: {len(final_date_set)} dates with Final regular games")
-
-
-def _window_has_finals(start_iso: str, end_iso: str) -> bool:
-    sd = date.fromisoformat(start_iso)
-    ed = date.fromisoformat(end_iso)
-    cur = sd
-    while cur <= ed:
-        if cur.isoformat() in final_date_set:
-            return True
-        cur += timedelta(days=1)
-    return False
-
+# Drop windows that are entirely in the future — Statcast has no data
+# for games that haven't been played. No silver_game dep, so this task
+# can run truly parallel to refine_silver and the other ingests.
+# Savant has a ~4-day publication lag for the most recent games; we
+# skip the trailing 4 days too so each window has actually-published
+# data before we land it (otherwise the bronze blob is mostly empty
+# and gets re-fetched next hour anyway).
+today = date.today()
+publication_cutoff = today - timedelta(days=3)
 
 all_windows = _generate_windows(season)
-to_fetch = [(s, e) for (s, e) in all_windows if _window_has_finals(s, e)]
-print(f"windows to fetch: {len(to_fetch)} of {len(all_windows)}")
+to_fetch = [
+    (s, e)
+    for (s, e) in all_windows
+    if date.fromisoformat(s) <= publication_cutoff
+]
+print(f"windows to fetch: {len(to_fetch)} of {len(all_windows)} (publication cutoff {publication_cutoff})")
 
 # COMMAND ----------
 client = SavantClient()

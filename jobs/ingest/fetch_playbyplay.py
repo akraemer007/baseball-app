@@ -69,19 +69,20 @@ _retry_sql(f"""
 """)
 
 # COMMAND ----------
-# Find Final games for this season directly from bronze_schedule (the
-# raw API payload from ingest_schedule_and_games), so this task can run
-# in parallel with refine_silver instead of waiting for it. Same JSON
-# parser used by silver_transforms.parse_schedule_payloads.
+# Discover Final games by calling the MLB Stats API schedule endpoint
+# DIRECTLY — no dep on bronze_schedule or silver_game. This lets the
+# task run in parallel with the other ingests + refine_silver.
+# One HTTP call covers the whole season.
+client = MlbStatsApiClient()
+
 existing = {
     row.game_pk for row in spark.sql(
         f"SELECT game_pk FROM {fq}.bronze_playbyplay WHERE season = {season}"
     ).collect()
 }
 
-sched_rows = spark.table(f"{fq}.bronze_schedule").collect()
-payloads = [json.loads(r.payload) for r in sched_rows]
-all_games = parse_schedule_payloads(payloads)
+sched = client.schedule_range(f"{season}-03-01", f"{season}-11-15")
+all_games = parse_schedule_payloads([sched.payload])
 finals = [
     (g["game_pk"], g["game_date"])
     for g in all_games

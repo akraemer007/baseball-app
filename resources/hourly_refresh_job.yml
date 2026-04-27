@@ -49,10 +49,10 @@ resources:
           environment_key: default_env
 
         - task_key: ingest_playbyplay
-          # Reads Final game_pks directly from bronze_schedule (same
-          # JSON parser silver uses), so it runs parallel to refine_silver.
-          depends_on:
-            - task_key: ingest_schedule_and_games
+          # Calls MLB Stats API schedule endpoint directly to discover
+          # Final game_pks — no dep on bronze_schedule or silver_game.
+          # Runs from zero, fully parallel to ingest_schedule_and_games
+          # and refine_silver.
           notebook_task:
             notebook_path: ../jobs/ingest/fetch_playbyplay.py
             base_parameters:
@@ -71,11 +71,8 @@ resources:
           environment_key: default_env
 
         - task_key: ingest_statcast
-          # Statcast doesn't read silver_game; pulling Savant CSV by
-          # date range only. Run in parallel with refine_silver to cut
-          # wall-clock time on the hourly chain.
-          depends_on:
-            - task_key: ingest_schedule_and_games
+          # Statcast pulls Savant CSV by date range; no warehouse reads.
+          # Runs from zero, fully parallel to all other ingests.
           notebook_task:
             notebook_path: ../jobs/ingest/fetch_statcast.py
             base_parameters:
@@ -94,10 +91,8 @@ resources:
           environment_key: default_env
 
         - task_key: ingest_transactions
-          # Transactions feed doesn't read silver_game; pulls MLB Stats
-          # API by date range. Run parallel to refine_silver.
-          depends_on:
-            - task_key: ingest_schedule_and_games
+          # Transactions pulls MLB Stats API by date range; no
+          # warehouse reads. Runs from zero, fully parallel.
           notebook_task:
             notebook_path: ../jobs/ingest/fetch_transactions.py
             base_parameters:
