@@ -1204,7 +1204,7 @@ team_milestones_raw AS (
     SELECT team_id, game_date, season, n
     FROM team_milestone_candidates
     WHERE n >= 4 AND n > prev_streak
-      AND game_date >= current_date() - INTERVAL '7' DAY
+      AND CAST(game_date AS DATE) >= current_date() - INTERVAL '7' DAY
 ),
 -- For each milestone, find the most recent prior day where this team
 -- had a streak_length >= N, NOT counting days within the current streak
@@ -1223,7 +1223,7 @@ team_milestone_with_prior AS (
     LEFT JOIN team_streaks prior
         ON prior.team_id = m.team_id
        AND prior.streak_length >= m.n
-       AND prior.game_date <= m.game_date - CAST(m.n AS INT)
+       AND CAST(prior.game_date AS DATE) <= CAST(m.game_date AS DATE) - CAST(m.n AS INT)
     GROUP BY m.team_id, m.game_date, m.season, m.n
 ),
 -- Re-attach the prior streak's exact length on its peak day (so we can
@@ -1309,7 +1309,7 @@ player_milestones_raw AS (
     SELECT player_id, player_name, game_date, season, n
     FROM player_milestone_candidates
     WHERE n >= 8 AND n > prev_streak
-      AND game_date >= current_date() - INTERVAL '7' DAY
+      AND CAST(game_date AS DATE) >= current_date() - INTERVAL '7' DAY
 ),
 player_milestone_with_prior AS (
     SELECT
@@ -1323,7 +1323,7 @@ player_milestone_with_prior AS (
     LEFT JOIN player_streaks prior
         ON prior.player_id = m.player_id
        AND prior.streak_length >= m.n
-       AND prior.game_date <= m.game_date - CAST(m.n AS INT)
+       AND CAST(prior.game_date AS DATE) <= CAST(m.game_date AS DATE) - CAST(m.n AS INT)
     GROUP BY m.player_id, m.player_name, m.game_date, m.season, m.n
 ),
 player_milestone_enriched AS (
@@ -1360,7 +1360,7 @@ multi_hr_games AS (
 ),
 multi_hr_recent AS (
     SELECT * FROM multi_hr_games
-    WHERE game_date >= current_date() - INTERVAL '7' DAY
+    WHERE CAST(game_date AS DATE) >= current_date() - INTERVAL '7' DAY
 ),
 multi_hr_with_prior AS (
     -- Most recent prior multi-HR game for the same player (any prior game).
