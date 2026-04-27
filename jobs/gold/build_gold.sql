@@ -1103,3 +1103,384 @@ LEFT JOIN silver_player_season ps
 -- Expected: top names should be a mix of Judge/Ohtani/Soto-type bats and
 -- elite closers (Clase, Díaz). Anyone with a negative WPA above 600 PAs
 -- is a sub-replacement bat; that's the sanity check.
+
+-- ==========================================================================
+-- gold_milestone_events (DERIV-5)
+-- Narrative-ready milestone events from the last 7 days, with historical
+-- "first since X" context. Drives FEAT-8 (milestone callouts on home page).
+--
+-- Three classifiers:
+--   1. team_winning_streak    — team won their Nth in a row (N >= 4),
+--      compared to most recent prior streak of length >= N since 2020.
+--   2. player_hitting_streak  — player extended a hitting streak to N
+--      games (N >= 8, hits >= 1 each game).
+--   3. player_multi_hr_game   — player hit 2+ HRs in a single game,
+--      compared to that player's prior multi-HR games.
+--
+-- Idempotency: full rebuild on every run (CREATE OR REPLACE).
+-- Table is small (a few rows per day) so re-creation is cheap.
+--
+-- 2020 short-season note: when comparison_year = 2020, the prior streak
+-- happened in the COVID-shortened season — we append "(short season)"
+-- to event_text so callers know the comparison is asterisk-worthy.
+--
+-- Portability: pure window-function SQL, no MERGE / no Delta-only ops.
+-- The "first since X" lookback is a self-join against per-(subject,date)
+-- aggregates; works on Postgres unchanged.
+-- ==========================================================================
+CREATE OR REPLACE TABLE gold_milestone_events AS
+WITH
+-- ---------- TEAM WINNING STREAKS ------------------------------------------
+-- One row per (team, game_date) for Final regular-season games. Doubleheaders
+-- collapse to a single date row using SUM(wins/losses) so the streak math is
+-- per-day, not per-game. (A 1-1 doubleheader resets the streak; 2-0 extends.)
+team_day AS (
+    SELECT
+        tg.team_id,
+        g.game_date,
+        g.season,
+        SUM(CASE WHEN g.winner_team_id = tg.team_id THEN 1 ELSE 0 END) AS wins,
+        SUM(CASE WHEN g.winner_team_id IS NOT NULL
+                  AND g.winner_team_id != tg.team_id THEN 1 ELSE 0 END) AS losses
+    FROM silver_team_game tg
+    JOIN silver_game g USING (game_pk)
+    WHERE g.game_type = 'R' AND g.status = 'Final' AND g.winner_team_id IS NOT NULL
+    GROUP BY tg.team_id, g.game_date, g.season
+),
+-- Compute consecutive-win streak length ending each day. Standard
+-- gaps-and-islands: every "non-clean-win-day" (any loss, or 0 wins)
+-- starts a new island; cumulative sum of those flags forms the group id.
+-- Within each group, ROW_NUMBER counts consecutive winning days.
+team_day_flagged AS (
+    SELECT
+        team_id,
+        game_date,
+        season,
+        wins,
+        losses,
+        CASE WHEN losses > 0 OR wins = 0 THEN 1 ELSE 0 END AS streak_break
+    FROM team_day
+),
+team_day_grouped AS (
+    SELECT
+        team_id,
+        game_date,
+        season,
+        wins,
+        losses,
+        streak_break,
+        SUM(streak_break) OVER (PARTITION BY team_id ORDER BY game_date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS streak_group
+    FROM team_day_flagged
+),
+team_streaks AS (
+    -- streak_length = count of consecutive winning days through today
+    -- (0 on a day where losses > 0 or no wins).
+    SELECT
+        team_id,
+        game_date,
+        season,
+        CASE WHEN streak_break = 1 THEN 0
+             ELSE CAST(ROW_NUMBER() OVER (
+                PARTITION BY team_id, streak_group ORDER BY game_date
+             ) AS INT)
+        END AS streak_length
+    FROM team_day_grouped
+),
+-- A "team milestone day" is a day where the streak length first reaches N
+-- (i.e. today's streak > yesterday's) AND today's streak is at least 4.
+-- We materialize one row per (team, day) reaching streak_length >= 4 in the
+-- last 7 days; the streak length on that day IS the milestone N.
+team_milestone_candidates AS (
+    SELECT
+        team_id,
+        game_date,
+        season,
+        streak_length AS n,
+        LAG(streak_length, 1, 0) OVER (PARTITION BY team_id ORDER BY game_date) AS prev_streak
+    FROM team_streaks
+),
+team_milestones_raw AS (
+    SELECT team_id, game_date, season, n
+    FROM team_milestone_candidates
+    WHERE n >= 4 AND n > prev_streak
+      AND game_date >= current_date() - INTERVAL '7' DAY
+),
+-- For each milestone, find the most recent prior day where this team
+-- had a streak_length >= N, NOT counting days within the current streak
+-- itself. We do that by requiring the prior day's date to be at least
+-- (n) days before the milestone day — guaranteeing it's in a different
+-- streak run.
+team_milestone_with_prior AS (
+    SELECT
+        m.team_id,
+        m.game_date,
+        m.season,
+        m.n,
+        MAX(prior.game_date) AS prior_date,
+        MAX(prior.streak_length) AS prior_max_len
+    FROM team_milestones_raw m
+    LEFT JOIN team_streaks prior
+        ON prior.team_id = m.team_id
+       AND prior.streak_length >= m.n
+       AND prior.game_date <= m.game_date - CAST(m.n AS INT)
+    GROUP BY m.team_id, m.game_date, m.season, m.n
+),
+-- Re-attach the prior streak's exact length on its peak day (so we can
+-- say "longest streak since 2017 (8 games)"). Also pull the prior year.
+team_milestone_enriched AS (
+    SELECT
+        mp.team_id,
+        mp.game_date,
+        mp.season,
+        mp.n,
+        ts.streak_length AS prior_length,
+        EXTRACT(YEAR FROM mp.prior_date) AS prior_year
+    FROM team_milestone_with_prior mp
+    LEFT JOIN team_streaks ts
+        ON ts.team_id = mp.team_id
+       AND ts.game_date = mp.prior_date
+),
+-- ---------- PLAYER HITTING STREAKS ----------------------------------------
+-- One row per (player, game_date): did they get a hit that day? Doubleheaders
+-- collapse — at least 1 hit across all games that day = streak continues.
+-- A player with 0 ABs (DNP / pinch-ran without batting) doesn't break the
+-- streak — we only record DAYS the player actually batted.
+player_day_batting AS (
+    SELECT
+        b.player_id,
+        ANY_VALUE(b.player_name) AS player_name,
+        b.game_date,
+        g.season,
+        SUM(b.at_bats) AS at_bats,
+        SUM(b.hits) AS hits
+    FROM silver_player_game_batting b
+    JOIN silver_game g USING (game_pk)
+    WHERE g.game_type = 'R' AND g.status = 'Final'
+    GROUP BY b.player_id, b.game_date, g.season
+    HAVING SUM(b.at_bats) > 0
+),
+player_day_flagged AS (
+    SELECT
+        player_id,
+        player_name,
+        game_date,
+        season,
+        hits,
+        CASE WHEN hits = 0 THEN 1 ELSE 0 END AS streak_break
+    FROM player_day_batting
+),
+player_day_grouped AS (
+    SELECT
+        player_id,
+        player_name,
+        game_date,
+        season,
+        hits,
+        streak_break,
+        SUM(streak_break) OVER (PARTITION BY player_id ORDER BY game_date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS streak_group
+    FROM player_day_flagged
+),
+player_streaks AS (
+    SELECT
+        player_id,
+        ANY_VALUE(player_name) OVER (PARTITION BY player_id) AS player_name,
+        game_date,
+        season,
+        CASE WHEN streak_break = 1 THEN 0
+             ELSE CAST(ROW_NUMBER() OVER (
+                PARTITION BY player_id, streak_group ORDER BY game_date
+             ) AS INT)
+        END AS streak_length
+    FROM player_day_grouped
+),
+player_milestone_candidates AS (
+    SELECT
+        player_id,
+        player_name,
+        game_date,
+        season,
+        streak_length AS n,
+        LAG(streak_length, 1, 0) OVER (PARTITION BY player_id ORDER BY game_date) AS prev_streak
+    FROM player_streaks
+),
+player_milestones_raw AS (
+    SELECT player_id, player_name, game_date, season, n
+    FROM player_milestone_candidates
+    WHERE n >= 8 AND n > prev_streak
+      AND game_date >= current_date() - INTERVAL '7' DAY
+),
+player_milestone_with_prior AS (
+    SELECT
+        m.player_id,
+        m.player_name,
+        m.game_date,
+        m.season,
+        m.n,
+        MAX(prior.game_date) AS prior_date
+    FROM player_milestones_raw m
+    LEFT JOIN player_streaks prior
+        ON prior.player_id = m.player_id
+       AND prior.streak_length >= m.n
+       AND prior.game_date <= m.game_date - CAST(m.n AS INT)
+    GROUP BY m.player_id, m.player_name, m.game_date, m.season, m.n
+),
+player_milestone_enriched AS (
+    SELECT
+        mp.player_id,
+        mp.player_name,
+        mp.game_date,
+        mp.season,
+        mp.n,
+        ps.streak_length AS prior_length,
+        EXTRACT(YEAR FROM mp.prior_date) AS prior_year
+    FROM player_milestone_with_prior mp
+    LEFT JOIN player_streaks ps
+        ON ps.player_id = mp.player_id
+       AND ps.game_date = mp.prior_date
+),
+-- ---------- PLAYER MULTI-HR GAMES -----------------------------------------
+-- Days in the last 7 where a player hit 2+ HRs in a single game. (Aggregated
+-- to game_pk grain, not day, so a 2-HR game in game 1 of a doubleheader is
+-- a milestone even if game 2 has zero HRs.)
+multi_hr_games AS (
+    SELECT
+        b.player_id,
+        ANY_VALUE(b.player_name) AS player_name,
+        b.game_pk,
+        b.game_date,
+        g.season,
+        SUM(b.home_runs) AS hr_in_game
+    FROM silver_player_game_batting b
+    JOIN silver_game g USING (game_pk)
+    WHERE g.game_type = 'R' AND g.status = 'Final'
+    GROUP BY b.player_id, b.game_pk, b.game_date, g.season
+    HAVING SUM(b.home_runs) >= 2
+),
+multi_hr_recent AS (
+    SELECT * FROM multi_hr_games
+    WHERE game_date >= current_date() - INTERVAL '7' DAY
+),
+multi_hr_with_prior AS (
+    -- Most recent prior multi-HR game for the same player (any prior game).
+    SELECT
+        m.player_id,
+        m.player_name,
+        m.game_pk,
+        m.game_date,
+        m.season,
+        m.hr_in_game,
+        MAX(prior.game_date) AS prior_date
+    FROM multi_hr_recent m
+    LEFT JOIN multi_hr_games prior
+        ON prior.player_id = m.player_id
+       AND prior.game_date < m.game_date
+    GROUP BY m.player_id, m.player_name, m.game_pk, m.game_date, m.season, m.hr_in_game
+),
+multi_hr_enriched AS (
+    SELECT
+        player_id,
+        player_name,
+        game_date,
+        season,
+        hr_in_game,
+        EXTRACT(YEAR FROM prior_date) AS prior_year
+    FROM multi_hr_with_prior
+),
+-- ---------- UNION + NARRATIVE TEMPLATING ----------------------------------
+-- Each classifier projects to the gold schema and builds event_text inline.
+-- "(short season)" is appended whenever the comparison year is 2020.
+team_events AS (
+    SELECT
+        'team' AS subject_type,
+        CAST(t.team_id AS BIGINT) AS subject_id,
+        t.name AS subject_name,
+        'team_winning_streak' AS event_kind,
+        CASE
+            WHEN te.prior_year IS NULL THEN
+                concat(t.name, ' won their ', CAST(te.n AS STRING),
+                       'th in a row — first ', CAST(te.n AS STRING),
+                       '+ game streak since 2020 backfill began.')
+            WHEN te.prior_year = 2020 THEN
+                concat(t.name, ' won their ', CAST(te.n AS STRING),
+                       'th in a row — longest streak since ',
+                       CAST(te.prior_year AS STRING), ' (',
+                       CAST(te.prior_length AS STRING), ' games) (short season).')
+            ELSE
+                concat(t.name, ' won their ', CAST(te.n AS STRING),
+                       'th in a row — longest streak since ',
+                       CAST(te.prior_year AS STRING), ' (',
+                       CAST(te.prior_length AS STRING), ' games).')
+        END AS event_text,
+        CAST(te.n AS INT) AS streak_length,
+        CAST(te.prior_year AS INT) AS comparison_year,
+        te.game_date AS happened_on,
+        CAST(te.season AS BIGINT) AS season
+    FROM team_milestone_enriched te
+    JOIN silver_team t ON t.team_id = te.team_id
+),
+player_streak_events AS (
+    SELECT
+        'player' AS subject_type,
+        CAST(pe.player_id AS BIGINT) AS subject_id,
+        pe.player_name AS subject_name,
+        'player_hitting_streak' AS event_kind,
+        CASE
+            WHEN pe.prior_year IS NULL THEN
+                concat(pe.player_name, ' extended his hitting streak to ',
+                       CAST(pe.n AS STRING), ' games — first ',
+                       CAST(pe.n AS STRING),
+                       '+ game streak of his recorded career (since 2020).')
+            WHEN pe.prior_year = 2020 THEN
+                concat(pe.player_name, ' extended his hitting streak to ',
+                       CAST(pe.n AS STRING),
+                       ' games — longest streak since ',
+                       CAST(pe.prior_year AS STRING), ' (',
+                       CAST(pe.prior_length AS STRING), ' games) (short season).')
+            ELSE
+                concat(pe.player_name, ' extended his hitting streak to ',
+                       CAST(pe.n AS STRING),
+                       ' games — longest streak since ',
+                       CAST(pe.prior_year AS STRING), ' (',
+                       CAST(pe.prior_length AS STRING), ' games).')
+        END AS event_text,
+        CAST(pe.n AS INT) AS streak_length,
+        CAST(pe.prior_year AS INT) AS comparison_year,
+        pe.game_date AS happened_on,
+        CAST(pe.season AS BIGINT) AS season
+    FROM player_milestone_enriched pe
+),
+multi_hr_events AS (
+    SELECT
+        'player' AS subject_type,
+        CAST(me.player_id AS BIGINT) AS subject_id,
+        me.player_name AS subject_name,
+        'player_multi_hr_game' AS event_kind,
+        CASE
+            WHEN me.prior_year IS NULL THEN
+                concat(me.player_name, ' hit ',
+                       CAST(me.hr_in_game AS STRING),
+                       ' HR in one game — first multi-HR game of his recorded career (since 2020).')
+            WHEN me.prior_year = 2020 THEN
+                concat(me.player_name, ' hit ',
+                       CAST(me.hr_in_game AS STRING),
+                       ' HR in one game — first multi-HR game since ',
+                       CAST(me.prior_year AS STRING), ' (short season).')
+            ELSE
+                concat(me.player_name, ' hit ',
+                       CAST(me.hr_in_game AS STRING),
+                       ' HR in one game — first multi-HR game since ',
+                       CAST(me.prior_year AS STRING), '.')
+        END AS event_text,
+        CAST(NULL AS INT) AS streak_length,
+        CAST(me.prior_year AS INT) AS comparison_year,
+        me.game_date AS happened_on,
+        CAST(me.season AS BIGINT) AS season
+    FROM multi_hr_enriched me
+)
+SELECT * FROM team_events
+UNION ALL
+SELECT * FROM player_streak_events
+UNION ALL
+SELECT * FROM multi_hr_events;
