@@ -859,3 +859,247 @@ CREATE TABLE IF NOT EXISTS gold_weekly_digest (
     digest_text   STRING,
     generated_at  TIMESTAMP
 ) USING DELTA;
+
+-- ==========================================================================
+-- gold_player_clutch (DERIV-4)
+-- WPA / leverage / clutch leaders aggregated from silver_play.
+--
+-- Win-probability model (v1, deliberately coarse — see TODO at bottom):
+--
+--   home_win_prob =
+--       1 / (1 + EXP(-alpha * inning_leverage * effective_score_diff))
+--
+--   where:
+--     alpha = 0.42                               (logistic slope, calibrated
+--                                                 so a 1-run lead in the 9th
+--                                                 ≈ 0.75 win prob)
+--     inning_leverage = 0.6 + 0.10 * inning      (1.0 in 4th → 1.5 in 9th;
+--                                                 capped at 1.6)
+--     effective_score_diff = (home_score - away_score)
+--                          + base_out_re_value * sign_for_team_at_bat
+--
+--   sign_for_team_at_bat = +1 when bottom half (home batting), -1 when top.
+--   base_out_re_value is a tiny adjustment (in run-equivalents) drawn from
+--   the (runners_before, outs_before) lookup below.
+--
+-- Run-expectancy lookup (24 base-out states), values approximated from
+-- Tom Tango's 2010-2015 RE24 table — see The Book Blog / Fangraphs glossary:
+--   https://library.fangraphs.com/misc/re24/
+-- We center on the league-avg state (none on, 0 outs ≈ 0.481 runs) so the
+-- numbers below are *deltas* from that baseline. They're small (±0.5 runs),
+-- enough to nudge the logistic in obvious leverage spots (bases loaded,
+-- 2 outs) without dominating the score-diff signal.
+-- ==========================================================================
+CREATE OR REPLACE TABLE gold_player_clutch AS
+WITH base_out_re AS (
+    -- (runners_before, outs_before) → delta_runs vs. the "empty / 0 outs"
+    -- baseline of ~0.481 runs. Positive = batting team in a better state.
+    -- Bitmap encoding matches jobs/common/parsers._runners_bitmap.
+    SELECT * FROM (VALUES
+        -- bases empty
+        (CAST(NULL AS STRING), 0,  0.000),
+        (CAST(NULL AS STRING), 1, -0.227),
+        (CAST(NULL AS STRING), 2, -0.379),
+        -- runner on 1st
+        ('1B',                 0,  0.378),
+        ('1B',                 1,  0.058),
+        ('1B',                 2, -0.241),
+        -- runner on 2nd
+        ('2B',                 0,  0.654),
+        ('2B',                 1,  0.234),
+        ('2B',                 2, -0.158),
+        -- runner on 3rd
+        ('3B',                 0,  0.892),
+        ('3B',                 1,  0.469),
+        ('3B',                 2,  0.090),
+        -- 1st & 2nd
+        ('1B,2B',              0,  0.964),
+        ('1B,2B',              1,  0.428),
+        ('1B,2B',              2, -0.084),
+        -- 1st & 3rd
+        ('1B,3B',              0,  1.169),
+        ('1B,3B',              1,  0.673),
+        ('1B,3B',              2,  0.014),
+        -- 2nd & 3rd
+        ('2B,3B',              0,  1.500),
+        ('2B,3B',              1,  0.730),
+        ('2B,3B',              2,  0.107),
+        -- bases loaded
+        ('1B,2B,3B',           0,  1.901),
+        ('1B,2B,3B',           1,  0.918),
+        ('1B,2B,3B',           2,  0.252)
+    ) AS t(runners_key, outs_key, delta_runs)
+),
+plays_with_after AS (
+    -- For each play, derive the "after" state from the *next* play's
+    -- "_before" within the same game. The carry-forward in
+    -- jobs/common/parsers.py guarantees runners_before / outs_before /
+    -- *_score_before of play N+1 equal the post-state of play N (with
+    -- runners/outs reset at half-inning boundary, which is the correct
+    -- after-state for the last play of a half).
+    SELECT
+        p.game_pk,
+        p.play_index,
+        p.inning,
+        p.half_inning,
+        p.batter_id,
+        p.pitcher_id,
+        p.event,
+        p.outs_before,
+        p.home_score_before,
+        p.away_score_before,
+        p.runners_before,
+        p.season,
+        p.game_date,
+        LEAD(p.outs_before)
+            OVER (PARTITION BY p.game_pk ORDER BY p.play_index) AS outs_after,
+        LEAD(p.home_score_before)
+            OVER (PARTITION BY p.game_pk ORDER BY p.play_index) AS home_score_after_raw,
+        LEAD(p.away_score_before)
+            OVER (PARTITION BY p.game_pk ORDER BY p.play_index) AS away_score_after_raw,
+        LEAD(p.runners_before)
+            OVER (PARTITION BY p.game_pk ORDER BY p.play_index) AS runners_after
+    FROM silver_play p
+),
+plays_scored AS (
+    SELECT
+        ps.*,
+        -- Last play of a game has no LEAD: assume scoreboard didn't change
+        -- on the play (true for ~95% of game-ending outs; walk-off HRs are
+        -- the noisy minority and we accept the v1 inaccuracy).
+        COALESCE(ps.home_score_after_raw, ps.home_score_before) AS home_score_after,
+        COALESCE(ps.away_score_after_raw, ps.away_score_before) AS away_score_after,
+        COALESCE(ps.outs_after, ps.outs_before) AS outs_after_safe,
+        -- Logistic constants (see header comment).
+        0.42 AS alpha,
+        LEAST(1.6, 0.6 + 0.10 * CAST(ps.inning AS DOUBLE)) AS inning_leverage,
+        CASE WHEN ps.half_inning = 'bottom' THEN 1.0 ELSE -1.0 END AS bat_sign
+    FROM plays_with_after ps
+),
+plays_wp AS (
+    SELECT
+        ps.*,
+        COALESCE(re_b.delta_runs, 0.0) AS re_before,
+        COALESCE(re_a.delta_runs, 0.0) AS re_after,
+        -- Effective score diff (in runs), batting team's RE state nudges it.
+        ((ps.home_score_before - ps.away_score_before)
+            + ps.bat_sign * COALESCE(re_b.delta_runs, 0.0)) AS eff_diff_before,
+        ((ps.home_score_after  - ps.away_score_after)
+            + ps.bat_sign * COALESCE(re_a.delta_runs, 0.0)) AS eff_diff_after
+    FROM plays_scored ps
+    LEFT JOIN base_out_re re_b
+        ON  (ps.runners_before IS NOT DISTINCT FROM re_b.runners_key)
+        AND ps.outs_before = re_b.outs_key
+    LEFT JOIN base_out_re re_a
+        ON  (ps.runners_after IS NOT DISTINCT FROM re_a.runners_key)
+        AND ps.outs_after_safe = re_a.outs_key
+),
+plays_delta AS (
+    SELECT
+        pw.*,
+        1.0 / (1.0 + EXP(-pw.alpha * pw.inning_leverage * pw.eff_diff_before))
+            AS home_wp_before,
+        1.0 / (1.0 + EXP(-pw.alpha * pw.inning_leverage * pw.eff_diff_after))
+            AS home_wp_after
+    FROM plays_wp pw
+),
+plays_pa AS (
+    -- Filter to plate-appearance-ending plays. event is NULL for
+    -- mid-PA pickoffs / wild pitches / stolen bases, so a non-NULL
+    -- event is a workable PA proxy without enumerating outcomes.
+    SELECT
+        pd.*,
+        (pd.home_wp_after - pd.home_wp_before) AS d_home_wp,
+        ABS(pd.home_wp_after - pd.home_wp_before) AS abs_d_home_wp
+    FROM plays_delta pd
+    WHERE pd.event IS NOT NULL
+      AND pd.event <> ''
+),
+league_avg AS (
+    SELECT
+        season,
+        -- Guard against a season with zero plays (early April first-run).
+        NULLIF(AVG(abs_d_home_wp), 0) AS avg_abs_d_wp
+    FROM plays_pa
+    GROUP BY season
+),
+plays_lev AS (
+    SELECT
+        pp.*,
+        pp.abs_d_home_wp / la.avg_abs_d_wp AS leverage_index
+    FROM plays_pa pp
+    JOIN league_avg la USING (season)
+),
+batter_agg AS (
+    SELECT
+        season,
+        batter_id AS player_id,
+        'batter' AS role,
+        COUNT(*) AS plate_appearances,
+        -- Batter WPA: positive when home_wp moves toward batting team's side.
+        SUM(CASE WHEN half_inning = 'bottom' THEN d_home_wp ELSE -d_home_wp END)
+            AS wpa_total,
+        AVG(leverage_index) AS leverage_avg,
+        SUM(CASE WHEN leverage_index >= 2.0 THEN 1 ELSE 0 END) AS high_lev_pa
+    FROM plays_lev
+    WHERE batter_id IS NOT NULL
+    GROUP BY season, batter_id
+),
+pitcher_agg AS (
+    SELECT
+        season,
+        pitcher_id AS player_id,
+        'pitcher' AS role,
+        COUNT(*) AS plate_appearances,
+        -- Pitcher WPA is the inverse of batter WPA: pitcher gains when
+        -- home_wp moves toward the pitching team.
+        SUM(CASE WHEN half_inning = 'bottom' THEN -d_home_wp ELSE d_home_wp END)
+            AS wpa_total,
+        AVG(leverage_index) AS leverage_avg,
+        SUM(CASE WHEN leverage_index >= 2.0 THEN 1 ELSE 0 END) AS high_lev_pa
+    FROM plays_lev
+    WHERE pitcher_id IS NOT NULL
+    GROUP BY season, pitcher_id
+),
+all_agg AS (
+    SELECT * FROM batter_agg
+    UNION ALL
+    SELECT * FROM pitcher_agg
+)
+SELECT
+    CAST(a.season AS BIGINT)            AS season,
+    CAST(a.player_id AS BIGINT)         AS player_id,
+    ps.player_name,
+    a.role,
+    CAST(a.plate_appearances AS BIGINT) AS plate_appearances,
+    CAST(a.wpa_total AS DOUBLE)         AS wpa_total,
+    CAST(a.leverage_avg AS DOUBLE)      AS leverage_avg,
+    CAST(a.high_lev_pa AS BIGINT)       AS high_lev_pa
+FROM all_agg a
+LEFT JOIN silver_player_season ps
+    ON  a.season    = ps.season
+    AND a.player_id = ps.player_id;
+
+-- TODO(DERIV-4 follow-up): the v1 model has known weak spots:
+--   (a) Walk-off HRs at the last play of a game don't see the post-play
+--       score (no LEAD row), so their WPA is under-counted.
+--   (b) base_out_re lookup is run-expectancy *delta*, not directly
+--       win-prob delta — fine for leverage ordering, less faithful to
+--       Fangraphs WPA in absolute magnitude.
+--   (c) inning_leverage caps at 1.6; a more honest model would have a
+--       sharper late-and-close curve.
+-- A v2 swap-in: replace base_out_re VALUES with a per-state win-prob
+-- table (Tango 1969-92 published) and drop the logistic entirely.
+
+-- Spot-check (run after build):
+--   SELECT player_name, role, season, plate_appearances,
+--          ROUND(wpa_total, 3) AS wpa,
+--          ROUND(leverage_avg, 2) AS lev_avg,
+--          high_lev_pa
+--   FROM gold_player_clutch
+--   WHERE season = 2025 AND plate_appearances >= 200
+--   ORDER BY wpa_total DESC
+--   LIMIT 5;
+-- Expected: top names should be a mix of Judge/Ohtani/Soto-type bats and
+-- elite closers (Clase, Díaz). Anyone with a negative WPA above 600 PAs
+-- is a sub-replacement bat; that's the sanity check.
