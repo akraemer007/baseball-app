@@ -84,6 +84,131 @@ FROM cumulative c
 JOIN season_leaders sl USING (season, player_id);
 
 -- ==========================================================================
+-- gold_player_expected_stats / gold_team_expected_stats: xwOBA / wOBA / xBA
+-- aggregates from silver_pa (one row per plate appearance).
+--
+-- xwOBA / xBA come straight from Savant's per-PA estimated_woba_using_speedangle
+-- and estimated_ba_using_speedangle (averages over events that produced a
+-- non-null value — i.e. balls in play + Ks/walks where Savant fills it in).
+--
+-- wOBA uses the 2025 FanGraphs / Tom Tango wOBA constants:
+--     wOBA = (0.69*uBB + 0.72*HBP + 0.89*1B + 1.27*2B + 1.62*3B + 2.10*HR)
+--          / (AB + BB - IBB + SF + HBP)
+-- where uBB = unintentional walks (events='walk' minus events='intent_walk').
+--
+-- TODO: these constants drift year-to-year. If we ever ingest multiple
+-- seasons or care about cross-year wOBA accuracy, swap the literals for a
+-- season-keyed lookup table (one row per season with the six weights and
+-- the wOBA scale).
+-- ==========================================================================
+CREATE OR REPLACE TABLE gold_player_expected_stats AS
+WITH pa_clean AS (
+    -- Defensive: drop rows with null events so an unclassified Savant value
+    -- doesn't poison the AB / wOBA denominators.
+    SELECT
+        season,
+        batter_id AS player_id,
+        events,
+        estimated_woba_using_speedangle,
+        estimated_ba_using_speedangle
+    FROM silver_pa
+    WHERE events IS NOT NULL
+),
+agg AS (
+    SELECT
+        season,
+        player_id,
+        COUNT(*) AS pa,
+        -- AB-eligible PAs: exclude walks, HBP, sacs, intentional walks, catcher's interference.
+        SUM(CASE WHEN events NOT IN ('walk','intent_walk','hit_by_pitch','sac_fly','sac_bunt','sac_fly_double_play','sac_bunt_double_play','catcher_interf')
+                 THEN 1 ELSE 0 END) AS abs,
+        -- wOBA numerator components.
+        SUM(CASE WHEN events = 'walk' THEN 1 ELSE 0 END) AS bb,
+        SUM(CASE WHEN events = 'intent_walk' THEN 1 ELSE 0 END) AS ibb,
+        SUM(CASE WHEN events = 'hit_by_pitch' THEN 1 ELSE 0 END) AS hbp,
+        SUM(CASE WHEN events = 'single' THEN 1 ELSE 0 END) AS singles,
+        SUM(CASE WHEN events = 'double' THEN 1 ELSE 0 END) AS doubles,
+        SUM(CASE WHEN events = 'triple' THEN 1 ELSE 0 END) AS triples,
+        SUM(CASE WHEN events = 'home_run' THEN 1 ELSE 0 END) AS home_runs,
+        SUM(CASE WHEN events IN ('sac_fly','sac_fly_double_play') THEN 1 ELSE 0 END) AS sf,
+        AVG(estimated_woba_using_speedangle) AS xwoba,
+        AVG(estimated_ba_using_speedangle)   AS xba
+    FROM pa_clean
+    GROUP BY season, player_id
+)
+SELECT
+    CAST(season AS BIGINT)    AS season,
+    CAST(player_id AS BIGINT) AS player_id,
+    CAST(pa AS BIGINT)        AS pa,
+    CAST(abs AS BIGINT)       AS abs,
+    xwoba,
+    xba,
+    CASE
+        WHEN (abs + (bb - ibb) + sf + hbp) > 0 THEN
+            (0.69 * (bb - ibb)
+           + 0.72 * hbp
+           + 0.89 * singles
+           + 1.27 * doubles
+           + 1.62 * triples
+           + 2.10 * home_runs)
+            / (abs + (bb - ibb) + sf + hbp)
+        ELSE NULL
+    END AS woba
+FROM agg;
+
+CREATE OR REPLACE TABLE gold_team_expected_stats AS
+WITH pa_clean AS (
+    SELECT
+        season,
+        batter_team,
+        events,
+        estimated_woba_using_speedangle,
+        estimated_ba_using_speedangle
+    FROM silver_pa
+    WHERE events IS NOT NULL
+),
+agg AS (
+    SELECT
+        pc.season,
+        t.team_id,
+        COUNT(*) AS pa,
+        SUM(CASE WHEN events NOT IN ('walk','intent_walk','hit_by_pitch','sac_fly','sac_bunt','sac_fly_double_play','sac_bunt_double_play','catcher_interf')
+                 THEN 1 ELSE 0 END) AS abs,
+        SUM(CASE WHEN events = 'walk' THEN 1 ELSE 0 END) AS bb,
+        SUM(CASE WHEN events = 'intent_walk' THEN 1 ELSE 0 END) AS ibb,
+        SUM(CASE WHEN events = 'hit_by_pitch' THEN 1 ELSE 0 END) AS hbp,
+        SUM(CASE WHEN events = 'single' THEN 1 ELSE 0 END) AS singles,
+        SUM(CASE WHEN events = 'double' THEN 1 ELSE 0 END) AS doubles,
+        SUM(CASE WHEN events = 'triple' THEN 1 ELSE 0 END) AS triples,
+        SUM(CASE WHEN events = 'home_run' THEN 1 ELSE 0 END) AS home_runs,
+        SUM(CASE WHEN events IN ('sac_fly','sac_fly_double_play') THEN 1 ELSE 0 END) AS sf,
+        AVG(pc.estimated_woba_using_speedangle) AS xwoba,
+        AVG(pc.estimated_ba_using_speedangle)   AS xba
+    FROM pa_clean pc
+    JOIN silver_team t ON t.abbrev = pc.batter_team
+    GROUP BY pc.season, t.team_id
+)
+SELECT
+    CAST(season AS BIGINT)  AS season,
+    CAST(team_id AS BIGINT) AS team_id,
+    CAST(pa AS BIGINT)      AS pa,
+    CAST(abs AS BIGINT)     AS abs,
+    xwoba,
+    xba,
+    CASE
+        WHEN (abs + (bb - ibb) + sf + hbp) > 0 THEN
+            (0.69 * (bb - ibb)
+           + 0.72 * hbp
+           + 0.89 * singles
+           + 1.27 * doubles
+           + 1.62 * triples
+           + 2.10 * home_runs)
+            / (abs + (bb - ibb) + sf + hbp)
+        ELSE NULL
+    END AS woba
+FROM agg;
+
+-- ==========================================================================
 -- gold_team_stat_vs_league: team season totals with league mean/stddev/rank
 -- Powers the Team page percentile chart.
 -- ==========================================================================
@@ -201,12 +326,23 @@ stat_long AS (
     UNION ALL SELECT season, team_id, 'k_per_9',          strikeouts_pitching * 9.0 / NULLIF(innings_pitched, 0) FROM team_final
     UNION ALL SELECT season, team_id, 'errors_per_game',  errors * 1.0 / NULLIF(games, 0) FROM team_final
 ),
+-- Statcast-derived expected stats. Joined in via UNION ALL so the rank/z-score
+-- machinery below applies to xwoba/woba/xba for free. All three are higher-is-better.
+expected_stats_long AS (
+    SELECT season, team_id, 'xwoba' AS stat, CAST(xwoba AS DOUBLE) AS val FROM gold_team_expected_stats
+    UNION ALL SELECT season, team_id, 'woba',  CAST(woba  AS DOUBLE) FROM gold_team_expected_stats
+    UNION ALL SELECT season, team_id, 'xba',   CAST(xba   AS DOUBLE) FROM gold_team_expected_stats
+),
+stat_all AS (
+    SELECT * FROM stat_long
+    UNION ALL SELECT * FROM expected_stats_long
+),
 with_league AS (
     SELECT
         sl.*,
         AVG(val)    OVER (PARTITION BY season, stat) AS league_mean,
         STDDEV(val) OVER (PARTITION BY season, stat) AS league_stddev
-    FROM stat_long sl
+    FROM stat_all sl
 )
 SELECT
     wl.season,
