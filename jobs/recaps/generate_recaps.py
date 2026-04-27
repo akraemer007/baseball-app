@@ -21,8 +21,18 @@ from pathlib import Path
 dbutils.widgets.text("catalog", "production_forecasting_catalog")
 dbutils.widgets.text("schema", "ak_baseball")
 dbutils.widgets.text("endpoint", "databricks-claude-haiku-4-5")
-dbutils.widgets.text("mode", "yesterday")      # yesterday | date | all-missing
+# Modes:
+#   yesterday   — calendar yesterday only (used by the legacy daily job)
+#   date        — a single explicit date (set target_date)
+#   recent      — last N days (set recent_days; default 3). For the
+#                 hourly chain — picks up newly-finalized games today
+#                 + a buffer for late West Coast finishes.
+#   all-missing — EVERY un-recapped Final game in history. DANGEROUS
+#                 with multi-year backfill; can fan out to thousands
+#                 of LLM calls. Use only for one-off bulk fills.
+dbutils.widgets.text("mode", "yesterday")
 dbutils.widgets.text("target_date", "")        # used when mode=date
+dbutils.widgets.text("recent_days", "3")       # used when mode=recent
 dbutils.widgets.text("force", "false")         # "true" to regenerate existing
 
 catalog = dbutils.widgets.get("catalog")
@@ -53,6 +63,10 @@ if mode == "yesterday":
     where_clause = f"game_date = '{yday}'"
 elif mode == "date":
     where_clause = f"game_date = '{target_date}'"
+elif mode == "recent":
+    days = int(dbutils.widgets.get("recent_days") or "3")
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    where_clause = f"game_date >= '{cutoff}'"
 elif mode == "all-missing":
     where_clause = "1=1"  # every game is a candidate; NOT-EXISTS below filters
 else:

@@ -14,16 +14,20 @@ resources:
         pause_status: "UNPAUSED"
       max_concurrent_runs: 1
       parameters:
-        # Recap mode/force/target_date come along for manual reruns
-        # (mirroring the old morning_recaps job parameters). Default
-        # mode=all-missing so the hourly recap pass handles whatever
-        # newly went Final since the last run.
+        # Recap parameters mirror the old morning_recaps_job for manual
+        # reruns. Default mode=recent (last 3 days) NOT all-missing —
+        # all-missing tries to recap every un-recapped game in history,
+        # which is thousands of LLM calls after the multi-year backfill.
+        # `recent` covers today's mid-day finalizers plus a buffer for
+        # late West Coast finishes.
         - name: recap_mode
-          default: "all-missing"
+          default: "recent"
         - name: recap_force
           default: "false"
         - name: recap_target_date
           default: ""
+        - name: recap_recent_days
+          default: "3"
       tasks:
         - task_key: ingest_schedule_and_games
           notebook_task:
@@ -149,6 +153,7 @@ resources:
               mode: "{{job.parameters.recap_mode}}"
               force: "{{job.parameters.recap_force}}"
               target_date: "{{job.parameters.recap_target_date}}"
+              recent_days: "{{job.parameters.recap_recent_days}}"
           environment_key: default_env
 
       environments:
