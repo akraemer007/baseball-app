@@ -20,7 +20,7 @@ import gzip
 import os
 import sys
 import time as _time
-from datetime import date
+from datetime import date, timedelta
 
 dbutils.widgets.text("catalog", "production_forecasting_catalog")
 dbutils.widgets.text("schema", "ak_baseball")
@@ -71,42 +71,51 @@ _retry_sql(f"""
 """)
 
 # COMMAND ----------
-# Two-month windows aligned to the MLB regular season:
-#   Mar 1 – Apr 30, May 1 – Jun 30, Jul 1 – Aug 31, Sep 1 – Oct 31.
-# Picking 2-month windows keeps each Savant page well under their ~40k
-# row soft limit while still amortizing the per-request cost.
-WINDOWS = [
-    ("03-01", "04-30"),
-    ("05-01", "06-30"),
-    ("07-01", "08-31"),
-    ("09-01", "10-31"),
-]
+# 7-day windows from Mar 1 through Nov 1 (or today, whichever earlier).
+# Two-month windows blew past Savant's response cap (~25-40k rows) —
+# we got back only one week's worth regardless of date range. Weekly
+# chunks (~25k rows MLB-wide) stay safely under the cap.
+WINDOW_DAYS = 7
 
-# Gate windows on whether `silver_game` has any Final regular-season
-# games whose `game_date` falls inside the window. Skips empty windows
-# entirely (early April when only Mar–Apr has games; Sep–Oct in spring).
-finals_by_month = spark.sql(f"""
-    SELECT DISTINCT date_format(game_date, 'MM') AS mm
+
+def _generate_windows(season: int) -> list[tuple[str, str]]:
+    season_start = date(season, 3, 1)
+    season_end = date(season, 11, 1)
+    end_cap = min(season_end, date.today())
+    out: list[tuple[str, str]] = []
+    cur = season_start
+    while cur <= end_cap:
+        chunk_end = min(cur + timedelta(days=WINDOW_DAYS - 1), end_cap)
+        out.append((cur.isoformat(), chunk_end.isoformat()))
+        cur = chunk_end + timedelta(days=1)
+    return out
+
+
+# Gate on whether silver_game has any Final regular-season games inside
+# each window. Skips empty future weeks during the in-season period.
+finals_dates = spark.sql(f"""
+    SELECT DISTINCT CAST(game_date AS STRING) AS d
     FROM {fq}.silver_game
     WHERE season = {season} AND status = 'Final' AND game_type = 'R'
 """).collect()
-months_with_finals = {r.mm for r in finals_by_month}
-print(f"season {season}: months with Final games so far: {sorted(months_with_finals)}")
+final_date_set = {r.d for r in finals_dates}
+print(f"season {season}: {len(final_date_set)} dates with Final regular games")
 
 
-def _window_has_finals(start_mmdd: str, end_mmdd: str) -> bool:
-    """True if any month inside the window has a Final regular game."""
-    start_m = int(start_mmdd[:2])
-    end_m = int(end_mmdd[:2])
-    return any(f"{m:02d}" in months_with_finals for m in range(start_m, end_m + 1))
+def _window_has_finals(start_iso: str, end_iso: str) -> bool:
+    sd = date.fromisoformat(start_iso)
+    ed = date.fromisoformat(end_iso)
+    cur = sd
+    while cur <= ed:
+        if cur.isoformat() in final_date_set:
+            return True
+        cur += timedelta(days=1)
+    return False
 
 
-to_fetch = [
-    (f"{season}-{s}", f"{season}-{e}")
-    for (s, e) in WINDOWS
-    if _window_has_finals(s, e)
-]
-print(f"windows to fetch: {len(to_fetch)} of {len(WINDOWS)}")
+all_windows = _generate_windows(season)
+to_fetch = [(s, e) for (s, e) in all_windows if _window_has_finals(s, e)]
+print(f"windows to fetch: {len(to_fetch)} of {len(all_windows)}")
 
 # COMMAND ----------
 client = SavantClient()
