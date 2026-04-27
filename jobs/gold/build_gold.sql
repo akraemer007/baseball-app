@@ -626,3 +626,222 @@ LEFT JOIN key_batters hb ON hb.game_pk = g.game_pk AND hb.team_id = g.home_team_
 LEFT JOIN key_batters ab ON ab.game_pk = g.game_pk AND ab.team_id = g.away_team_id
 LEFT JOIN starters_json sp ON sp.game_pk = g.game_pk
 WHERE g.game_type = 'R' AND g.status = 'Final';
+
+-- ==========================================================================
+-- gold_reliever_workload (DERIV-2)
+-- Per-reliever rolling 3-day and 7-day workload windows.
+-- Drives FEAT-5 (bullpen-usage card on team page).
+--
+-- Reliever heuristic: at silver_player_game_pitching grain, a pitcher is a
+-- 'starter' on a given day iff innings_pitched >= 4, otherwise 'reliever'.
+-- (4 IP captures both quality starts and short outings; everything below
+-- that — long-relief, openers, multi-inning leverage — counts as bullpen.)
+-- Filter to reliever appearances only; aggregate to one row per
+-- (player, team, game_date) so multi-inning reliever lines collapse to a
+-- single appearance.
+-- ==========================================================================
+CREATE OR REPLACE TABLE gold_reliever_workload AS
+WITH role_flagged AS (
+    -- One row per pitching line in a regular-season Final game, with a
+    -- starter/reliever flag derived from IP.
+    SELECT
+        p.game_pk,
+        p.game_date,
+        p.player_id,
+        p.player_name,
+        p.team_id,
+        p.innings_pitched,
+        COALESCE(p.pitches_thrown, 0) AS pitches_thrown,
+        CASE WHEN p.innings_pitched >= 4 THEN 'starter' ELSE 'reliever' END AS role
+    FROM silver_player_game_pitching p
+    JOIN silver_game g USING (game_pk)
+    WHERE g.game_type = 'R' AND g.status = 'Final'
+),
+reliever_days AS (
+    -- One row per (reliever, team, date): an appearance plus pitches.
+    -- A pitcher who relieved twice on a doubleheader date counts as 2.
+    SELECT
+        player_id,
+        ANY_VALUE(player_name) AS player_name,
+        team_id,
+        game_date AS as_of_date,
+        COUNT(*) AS appearances,
+        SUM(pitches_thrown) AS pitches_thrown
+    FROM role_flagged
+    WHERE role = 'reliever'
+    GROUP BY player_id, team_id, game_date
+),
+windowed AS (
+    -- Self-join trailing-window: for each (player, team, as_of_date), sum
+    -- appearances/pitches across rows where game_date is within the
+    -- inclusive trailing N-day window. Self-join is portability-safe
+    -- (Postgres + Databricks); avoids RANGE-INTERVAL syntax differences.
+    SELECT
+        cur.player_id,
+        cur.player_name,
+        cur.team_id,
+        cur.as_of_date,
+        SUM(CASE WHEN prev.as_of_date >= cur.as_of_date - INTERVAL '2' DAY
+                 THEN prev.appearances ELSE 0 END) AS appearances_3d,
+        SUM(prev.appearances) AS appearances_7d,
+        SUM(CASE WHEN prev.as_of_date >= cur.as_of_date - INTERVAL '2' DAY
+                 THEN prev.pitches_thrown ELSE 0 END) AS pitches_3d,
+        SUM(prev.pitches_thrown) AS pitches_7d,
+        MAX(CASE WHEN prev.as_of_date < cur.as_of_date THEN prev.as_of_date END)
+            AS last_prior_appearance_date
+    FROM reliever_days cur
+    JOIN reliever_days prev
+        ON prev.player_id = cur.player_id
+       AND prev.team_id   = cur.team_id
+       AND prev.as_of_date >= cur.as_of_date - INTERVAL '6' DAY
+       AND prev.as_of_date <= cur.as_of_date
+    GROUP BY cur.player_id, cur.player_name, cur.team_id, cur.as_of_date
+)
+SELECT
+    CAST(team_id AS BIGINT)              AS team_id,
+    CAST(player_id AS BIGINT)            AS player_id,
+    player_name,
+    as_of_date,
+    CAST(appearances_3d AS BIGINT)       AS appearances_3d,
+    CAST(appearances_7d AS BIGINT)       AS appearances_7d,
+    CAST(pitches_3d AS BIGINT)           AS pitches_3d,
+    CAST(pitches_7d AS BIGINT)           AS pitches_7d,
+    -- days_since_last is computed against the most recent PRIOR appearance
+    -- (today doesn't count as "since last"). NULL on a player's first-ever
+    -- reliever appearance row, since there is no prior outing.
+    CAST(DATEDIFF(as_of_date, last_prior_appearance_date) AS INT) AS days_since_last
+FROM windowed;
+
+-- ==========================================================================
+-- gold_team_sos (DERIV-3)
+-- Per-team running strength of schedule.
+-- Drives FEAT-6 (SoS tooltip on team header).
+--
+-- Convention: opp_win_pct EXCLUDES the subject team's games from each
+-- opponent's record. (Otherwise the metric is circular — if A and B only
+-- ever play each other, A's SoS would just reflect what B did against A.)
+-- For each (subject_team, as_of_date):
+--   1. Gather every matchup subject_team played up to and including that
+--      date, with the opponent_id and the opponent's record AS OF that
+--      date excluding all games vs subject_team.
+--   2. opp_win_pct = weighted avg of those opponent win-pcts, weighted by
+--      number of games played against each opponent up to as_of_date.
+-- ==========================================================================
+CREATE OR REPLACE TABLE gold_team_sos AS
+WITH game_results AS (
+    -- One row per (team, game) for Final regular-season games. side gives
+    -- subject vs opponent perspective via two materializations below.
+    SELECT
+        g.game_pk,
+        g.season,
+        g.game_date,
+        g.home_team_id,
+        g.away_team_id,
+        g.winner_team_id
+    FROM silver_game g
+    WHERE g.game_type = 'R' AND g.status = 'Final' AND g.winner_team_id IS NOT NULL
+),
+matchups AS (
+    -- Two rows per game: (subject, opponent, win_flag) for both perspectives.
+    SELECT
+        season,
+        game_date,
+        home_team_id AS subject_team_id,
+        away_team_id AS opp_team_id,
+        CASE WHEN winner_team_id = home_team_id THEN 1 ELSE 0 END AS subject_won
+    FROM game_results
+    UNION ALL
+    SELECT
+        season,
+        game_date,
+        away_team_id AS subject_team_id,
+        home_team_id AS opp_team_id,
+        CASE WHEN winner_team_id = away_team_id THEN 1 ELSE 0 END AS subject_won
+    FROM game_results
+),
+subject_dates AS (
+    -- Distinct (subject_team, season, as_of_date) — every date the team
+    -- played at least one Final regular-season game.
+    SELECT DISTINCT subject_team_id, season, game_date AS as_of_date
+    FROM matchups
+),
+-- Per (subject_team, opp_team, as_of_date): how many times subject has
+-- played opp on or before that date (the weight).
+matchup_weights AS (
+    SELECT
+        sd.subject_team_id,
+        sd.season,
+        sd.as_of_date,
+        m.opp_team_id,
+        COUNT(*) AS games_played_vs_opp
+    FROM subject_dates sd
+    JOIN matchups m
+        ON m.subject_team_id = sd.subject_team_id
+       AND m.season          = sd.season
+       AND m.game_date      <= sd.as_of_date
+    GROUP BY sd.subject_team_id, sd.season, sd.as_of_date, m.opp_team_id
+),
+-- Per (subject_team, opp_team, as_of_date): opp's record EXCLUDING games
+-- vs subject_team, on or before as_of_date. This is the "exclude subject"
+-- math — we filter matchups where opp was the subject AND its opp was NOT
+-- our subject_team.
+opp_records AS (
+    SELECT
+        sd.subject_team_id,
+        sd.season,
+        sd.as_of_date,
+        opp_m.subject_team_id AS opp_team_id,
+        SUM(opp_m.subject_won) AS opp_wins_excl,
+        COUNT(*)               AS opp_games_excl
+    FROM subject_dates sd
+    JOIN matchups opp_m
+        ON opp_m.season           = sd.season
+       AND opp_m.game_date       <= sd.as_of_date
+       AND opp_m.opp_team_id     != sd.subject_team_id   -- exclude games vs subject
+    GROUP BY sd.subject_team_id, sd.season, sd.as_of_date, opp_m.subject_team_id
+),
+-- Join weights × opponent records and weight-average.
+weighted AS (
+    SELECT
+        mw.subject_team_id,
+        mw.season,
+        mw.as_of_date,
+        mw.opp_team_id,
+        mw.games_played_vs_opp,
+        CASE WHEN orr.opp_games_excl > 0
+             THEN 1.0 * orr.opp_wins_excl / orr.opp_games_excl
+             ELSE NULL END AS opp_win_pct_excl
+    FROM matchup_weights mw
+    LEFT JOIN opp_records orr
+        ON  orr.subject_team_id = mw.subject_team_id
+        AND orr.season          = mw.season
+        AND orr.as_of_date      = mw.as_of_date
+        AND orr.opp_team_id     = mw.opp_team_id
+),
+sos AS (
+    SELECT
+        subject_team_id AS team_id,
+        season,
+        as_of_date,
+        -- Weighted avg of opp win-pct, weighted by games played vs opp.
+        -- Opponents whose only games so far were against subject have NULL
+        -- win-pct (no out-of-matchup record yet); they drop out of the avg.
+        SUM(games_played_vs_opp * opp_win_pct_excl)
+            / NULLIF(SUM(CASE WHEN opp_win_pct_excl IS NOT NULL
+                              THEN games_played_vs_opp ELSE 0 END), 0)
+            AS opp_win_pct,
+        SUM(CASE WHEN opp_win_pct_excl > 0.5 THEN games_played_vs_opp ELSE 0 END)
+            AS games_vs_winning,
+        SUM(CASE WHEN opp_win_pct_excl < 0.5 THEN games_played_vs_opp ELSE 0 END)
+            AS games_vs_losing
+    FROM weighted
+    GROUP BY subject_team_id, season, as_of_date
+)
+SELECT
+    CAST(team_id AS BIGINT)         AS team_id,
+    CAST(season AS BIGINT)          AS season,
+    as_of_date,
+    CAST(opp_win_pct AS DOUBLE)     AS opp_win_pct,
+    CAST(games_vs_winning AS INT)   AS games_vs_winning,
+    CAST(games_vs_losing AS INT)    AS games_vs_losing
+FROM sos;
