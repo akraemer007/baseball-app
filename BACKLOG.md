@@ -22,6 +22,37 @@ worktree. The brainstorm archive lives at `make_it_impressive.md`.
 
 ---
 
+## Progress (last updated 2026-04-27)
+
+| Wave | Tickets | Status |
+|------|---------|--------|
+| 0 | ARCH-1, ARCH-4 | ✅ |
+| 1 | ARCH-3, FEAT-2, FEAT-3, FEAT-10, FEAT-14, FEAT-15, FEAT-17 | ✅ |
+| 2 | PIPE-0.5, PIPE-1, PIPE-2, PIPE-3 | ✅ (PIPE-4 odds skipped) |
+| 3 | DERIV-1, DERIV-2, DERIV-3, DERIV-4, DERIV-5, DERIV-6 | ✅ |
+| 4 | FEAT-1, FEAT-4, FEAT-5, FEAT-6, FEAT-7, FEAT-8, FEAT-9, FEAT-13 | ⏭️ next |
+| 5 | ARCH-2, ARCH-5, FEAT-12, FEAT-18 | ⏭️ |
+
+Other status:
+- **FEAT-11** (recap interest chips) — already-shipped, closed.
+- **FEAT-16** (team roster view) — deferred placeholder pending scope.
+- **PIPE-4** (sportsbook odds) — optional, skipped per backlog.
+
+**Cleanup pile (`tasks/post_wave3_cleanup.md`):** parallelize ingest
+in hourly job · move recap generation hourly + kill morning_recaps ·
+extend backfill.py to cover playByPlay/Statcast/transactions ·
+debug 2 missing team abbrevs in `gold_team_expected_stats`. To be
+folded in opportunistically alongside Wave 4/5.
+
+**Known data caveats:**
+- `gold_weekly_digest` table exists (DERIV-6) but is empty until
+  the `weekly_digest_job` fires Sunday 5 AM ET, or it's manually
+  triggered with `digest_force=true`.
+- Statcast coverage was buggy before commit `56cfc97` (one-week
+  windows only); now spans full season-to-date.
+
+---
+
 ## Open questions — resolved
 
 All 8 questions from the brainstorm pass have been answered. Record:
@@ -2279,18 +2310,29 @@ DERIV-2 (bullpen) ─> FEAT-5                  (no pipeline blocker)
 DERIV-3 (SoS)     ─> FEAT-6                  (no pipeline blocker)
 DERIV-6 (weekly digest) ─> FEAT-9
 
-Unblocked right now:
-  ARCH-1, ARCH-3, ARCH-4, ARCH-5, PIPE-0.5, PIPE-1, PIPE-2,
-  PIPE-3, PIPE-4, DERIV-2, DERIV-3, DERIV-6, FEAT-2, FEAT-3,
-  FEAT-10, FEAT-12, FEAT-14, FEAT-15, FEAT-17, FEAT-18
-  (FEAT-11 already shipped; FEAT-16 deferred for scope)
+Unblocked right now (post-Wave-3, 2026-04-27):
+  ARCH-5  — recap test harness (cleanup)
+  ARCH-2  — progressive disclosure (optional UX layer)
+  FEAT-1  — matchup preview on Today's Games
+  FEAT-4  — xwOBA card on team page          (DERIV-1 done)
+  FEAT-5  — bullpen fatigue surface          (DERIV-2 done)
+  FEAT-6  — strength of schedule tooltip     (DERIV-3 done)
+  FEAT-7  — clutch leaders widget            (DERIV-4 done)
+  FEAT-8  — milestone callouts on home page  (DERIV-5 done)
+  FEAT-9  — weekly digest on home page       (DERIV-6 done — table empty
+            until weekly_digest_job runs Sunday or is force-triggered)
+  FEAT-12 — recap inline player hyperlinks
+  FEAT-13 — injury / transactions ribbon     (PIPE-2 done)
+  FEAT-18 — trajectory window zoom
+  (FEAT-11 already shipped; FEAT-16 deferred for scope; FEAT-17
+   already done in Wave 1)
 ```
 
 ---
 
 ## Wave plan
 
-### Wave 0 — "get foundations right, solo"
+### Wave 0 — "get foundations right, solo" ✅ done
 
 Two tickets, run one at a time (they both touch shared code):
 
@@ -2300,7 +2342,7 @@ Two tickets, run one at a time (they both touch shared code):
 
 Everything after Wave 0 assumes these are merged.
 
-### Wave 1 — "parallel small wins"
+### Wave 1 — "parallel small wins" ✅ done (incl. FEAT-2/10/15 in Wave 1.5)
 
 After Wave 0, these can run in parallel worktrees — disjoint
 files:
@@ -2321,7 +2363,7 @@ files:
 adds point hit zones), then FEAT-2 rebases. Alternatively: do
 FEAT-2 solo in its own wave.
 
-### Wave 2 — "pipeline push, sequential"
+### Wave 2 — "pipeline push, sequential" ✅ done (PIPE-4 odds skipped)
 
 Only one pipeline ticket runs at a time. Between each, let the
 hourly refresh prove the schema is healthy before starting the
@@ -2337,7 +2379,7 @@ While Wave 2 is running, Wave 1 tickets that weren't done yet
 can continue in parallel worktrees since they don't touch
 pipeline.
 
-### Wave 3 — "derivations (parallel-safe post-pipeline)"
+### Wave 3 — "derivations (parallel-safe post-pipeline)" ✅ done
 
 After the relevant pipeline tickets land:
 
@@ -2351,7 +2393,7 @@ After the relevant pipeline tickets land:
 All six can run in parallel since each produces a different gold
 table. They only write, don't read each other.
 
-### Wave 4 — "surface the new data"
+### Wave 4 — "surface the new data" ⏭️ NEXT
 
 After derivations, these light up:
 
