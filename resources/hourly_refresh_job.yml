@@ -49,8 +49,10 @@ resources:
           environment_key: default_env
 
         - task_key: ingest_playbyplay
+          # Reads Final game_pks directly from bronze_schedule (same
+          # JSON parser silver uses), so it runs parallel to refine_silver.
           depends_on:
-            - task_key: refine_silver
+            - task_key: ingest_schedule_and_games
           notebook_task:
             notebook_path: ../jobs/ingest/fetch_playbyplay.py
             base_parameters:

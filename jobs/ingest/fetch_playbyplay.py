@@ -29,6 +29,7 @@ season = int(season_str) if season_str else date.today().year
 
 sys.path.insert(0, os.path.abspath("../common"))
 from mlb_stats_api import MlbStatsApiClient  # noqa: E402
+from parsers import parse_schedule_payloads  # noqa: E402
 
 fq = f"{catalog}.{schema}"
 
@@ -68,20 +69,26 @@ _retry_sql(f"""
 """)
 
 # COMMAND ----------
-# Find Final games for this season that don't yet have a bronze row.
+# Find Final games for this season directly from bronze_schedule (the
+# raw API payload from ingest_schedule_and_games), so this task can run
+# in parallel with refine_silver instead of waiting for it. Same JSON
+# parser used by silver_transforms.parse_schedule_payloads.
 existing = {
     row.game_pk for row in spark.sql(
         f"SELECT game_pk FROM {fq}.bronze_playbyplay WHERE season = {season}"
     ).collect()
 }
 
-finals = spark.sql(f"""
-    SELECT game_pk, game_date
-    FROM {fq}.silver_game
-    WHERE season = {season} AND status = 'Final'
-""").collect()
+sched_rows = spark.table(f"{fq}.bronze_schedule").collect()
+payloads = [json.loads(r.payload) for r in sched_rows]
+all_games = parse_schedule_payloads(payloads)
+finals = [
+    (g["game_pk"], g["game_date"])
+    for g in all_games
+    if g["status"] == "Final" and g["season"] == season
+]
 
-to_fetch = [(int(r.game_pk), r.game_date) for r in finals if int(r.game_pk) not in existing]
+to_fetch = [(pk, gd) for (pk, gd) in finals if pk not in existing]
 print(f"season {season}: {len(finals)} final games, {len(existing)} already ingested, {len(to_fetch)} to fetch")
 
 # COMMAND ----------
