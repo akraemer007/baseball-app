@@ -112,6 +112,7 @@ resources:
 
         - task_key: build_gold
           depends_on:
+            - task_key: refine_silver
             - task_key: refine_silver_playbyplay
             - task_key: refine_silver_statcast
             - task_key: refine_silver_transactions
