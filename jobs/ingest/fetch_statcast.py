@@ -91,23 +91,34 @@ def _generate_windows(season: int) -> list[tuple[str, str]]:
     return out
 
 
-# Drop windows that are entirely in the future — Statcast has no data
-# for games that haven't been played. No silver_game dep, so this task
-# can run truly parallel to refine_silver and the other ingests.
-# Savant has a ~4-day publication lag for the most recent games; we
-# skip the trailing 4 days too so each window has actually-published
-# data before we land it (otherwise the bronze blob is mostly empty
-# and gets re-fetched next hour anyway).
+# Two cases:
+#   1. New window not yet in bronze → fetch (one-shot backfill).
+#   2. Window already in bronze but recent (end within ~14 days) →
+#      re-fetch, since Savant has a ~4-day publication lag and may
+#      still be backfilling pitches for games that just went Final.
+# Older windows that we already have are FROZEN — don't waste an HTTP
+# call re-pulling 2024-04 every hour.
+existing_starts = {
+    row.month_start.isoformat() if hasattr(row.month_start, "isoformat") else str(row.month_start)
+    for row in spark.sql(
+        f"SELECT month_start FROM {fq}.bronze_statcast WHERE season = {season}"
+    ).collect()
+}
+
 today = date.today()
-publication_cutoff = today - timedelta(days=3)
+recent_cutoff_iso = (today - timedelta(days=14)).isoformat()
 
 all_windows = _generate_windows(season)
 to_fetch = [
     (s, e)
     for (s, e) in all_windows
-    if date.fromisoformat(s) <= publication_cutoff
+    if (s not in existing_starts) or (e >= recent_cutoff_iso)
 ]
-print(f"windows to fetch: {len(to_fetch)} of {len(all_windows)} (publication cutoff {publication_cutoff})")
+print(
+    f"windows to fetch: {len(to_fetch)} of {len(all_windows)} "
+    f"({len(existing_starts)} already in bronze, "
+    f"refresh trailing 14d ≥ {recent_cutoff_iso})"
+)
 
 # COMMAND ----------
 client = SavantClient()
