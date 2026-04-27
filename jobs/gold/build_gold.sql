@@ -845,3 +845,17 @@ SELECT
     CAST(games_vs_winning AS INT)   AS games_vs_winning,
     CAST(games_vs_losing AS INT)    AS games_vs_losing
 FROM sos;
+
+-- ==========================================================================
+-- gold_weekly_digest: one row per (team_id, week_start). Populated by the
+-- Sunday LLM job at jobs/digest/generate_weekly_digest.py. Created here
+-- (rather than in the job) so the table exists even before the digest job
+-- has ever run, and so the schema is documented alongside the rest of gold.
+-- ==========================================================================
+CREATE TABLE IF NOT EXISTS gold_weekly_digest (
+    team_id       BIGINT,
+    team_abbrev   STRING,
+    week_start    DATE,
+    digest_text   STRING,
+    generated_at  TIMESTAMP
+) USING DELTA;

@@ -1,0 +1,72 @@
+resources:
+  jobs:
+    ak_baseball_weekly_digest:
+      name: "[${bundle.target}] ak_baseball — weekly digest (LLM)"
+      schedule:
+        # 05:00 ET every Monday — refresh the pipeline first, then write the
+        # previous Mon-Sun digest. Job code snaps `target_week_start` back
+        # to the Monday of "this week" by default; for the Monday 5am run
+        # that's the Monday we just rolled into, whose week is empty, so
+        # operators pass `digest_target_week` for the previous Monday when
+        # backfilling. The default empty string still produces a (likely
+        # zero-game) row for the in-progress week, which is fine for
+        # idempotency: rerun later in the week with force=true.
+        quartz_cron_expression: "0 0 5 ? * MON *"
+        timezone_id: "America/New_York"
+        pause_status: "UNPAUSED"
+      max_concurrent_runs: 1
+      parameters:
+        - name: digest_force
+          default: "false"
+        - name: digest_target_week
+          default: ""
+      tasks:
+        - task_key: ingest_schedule_and_games
+          notebook_task:
+            notebook_path: ../jobs/ingest/fetch_games.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              mode: "daily"
+          environment_key: default_env
+
+        - task_key: refine_silver
+          depends_on:
+            - task_key: ingest_schedule_and_games
+          notebook_task:
+            notebook_path: ../jobs/refine/silver_transforms.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: default_env
+
+        - task_key: build_gold
+          depends_on:
+            - task_key: refine_silver
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../jobs/gold/build_gold.sql
+            parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+
+        - task_key: generate_weekly_digest
+          depends_on:
+            - task_key: build_gold
+          notebook_task:
+            notebook_path: ../jobs/digest/generate_weekly_digest.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              endpoint: ${var.foundation_model_endpoint}
+              force: "{{job.parameters.digest_force}}"
+              target_week_start: "{{job.parameters.digest_target_week}}"
+          environment_key: default_env
+
+      environments:
+        - environment_key: default_env
+          spec:
+            client: "2"
+            dependencies:
+              - requests>=2.32
