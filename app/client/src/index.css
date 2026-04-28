@@ -716,6 +716,36 @@ table.stat-table td.top-performer {
   }
 }
 
+/* "Advanced" sub-row below the main 2-col grid in the batting card.
+   Three stats (xBA / wOBA / xwOBA) render in a 3-col grid so the
+   slashline-vs-totals symmetry of the main grid stays intact. */
+.advanced-stats {
+  margin-top: 1.25rem;
+  padding-top: 0.85rem;
+  /* --text-dim (#5a6a80) at ~60% — slightly softer than full intensity. */
+  border-top: 1px solid color-mix(in srgb, var(--text-dim) 60%, transparent);
+}
+
+.advanced-stats-label {
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+}
+
+.percentile-list-advanced {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+@media (max-width: 720px) {
+  .percentile-list-advanced {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+}
+
 /* Desktop: label + value on the top row, spark fills the width below,
    pctl footer beneath. On mobile the three elements collapse into one
    tight horizontal line so the whole block is ~half as tall. */

@@ -45,6 +45,9 @@ export const STAT_LABELS: Record<string, string> = {
   slg: 'SLG',
   ops: 'OPS',
   ops_plus: 'OPS+',
+  xwoba: 'xwOBA',
+  woba: 'wOBA',
+  xba: 'xBA',
   era: 'ERA',
   era_minus: 'ERA-',
   fip: 'FIP',
@@ -75,6 +78,9 @@ const STAT_CATEGORIES: Record<string, 'batting' | 'pitching' | 'fielding'> = {
   slg: 'batting',
   ops: 'batting',
   ops_plus: 'batting',
+  xwoba: 'batting',
+  woba: 'batting',
+  xba: 'batting',
   runs_per_game: 'batting',
   hr_per_game: 'batting',
   strikeouts_pitching_total: 'pitching',
@@ -89,7 +95,7 @@ const STAT_CATEGORIES: Record<string, 'batting' | 'pitching' | 'fielding'> = {
 function formatStatValue(stat: string, raw: number | null | undefined): number {
   if (raw == null) return 0;
   if (INTEGER_STATS.has(stat)) return Math.round(raw);
-  const threeDec = new Set(['avg', 'obp', 'slg', 'ops']);
+  const threeDec = new Set(['avg', 'obp', 'slg', 'ops', 'xwoba', 'woba', 'xba']);
   return Number(raw.toFixed(threeDec.has(stat) ? 3 : 2));
 }
 
@@ -356,7 +362,9 @@ const PLAYER_STAT_SPECS: Record<
   {
     side: 'hitter' | 'pitcher';
     label: string;
-    /** SQL expression computing the stat off silver_player_season (alias `p`). */
+    /** SQL expression computing the stat off silver_player_season (alias `p`).
+     *  If the expression references `gpes.*`, the query injects a
+     *  `LEFT JOIN gold_player_expected_stats gpes` automatically. */
     valueExpr: string;
     lowerIsBetter: boolean;
   }
@@ -365,6 +373,12 @@ const PLAYER_STAT_SPECS: Record<
   obp:                         { side: 'hitter',  label: 'OBP',           valueExpr: 'p.obp',                                                      lowerIsBetter: false },
   slg:                         { side: 'hitter',  label: 'SLG',           valueExpr: 'p.slg',                                                      lowerIsBetter: false },
   ops:                         { side: 'hitter',  label: 'OPS',           valueExpr: '(p.obp + p.slg)',                                            lowerIsBetter: false },
+  // xwOBA / wOBA / xBA live in gold_player_expected_stats (DERIV-1 did
+  // not extend silver_player_season); LEFT JOIN below kicks in when the
+  // expression references gpes.
+  xwoba:                       { side: 'hitter',  label: 'xwOBA',         valueExpr: 'gpes.xwoba',                                                 lowerIsBetter: false },
+  woba:                        { side: 'hitter',  label: 'wOBA',          valueExpr: 'gpes.woba',                                                  lowerIsBetter: false },
+  xba:                         { side: 'hitter',  label: 'xBA',           valueExpr: 'gpes.xba',                                                   lowerIsBetter: false },
   hits_total:                  { side: 'hitter',  label: 'Hits',          valueExpr: 'p.hits',                                                     lowerIsBetter: false },
   hr_total:                    { side: 'hitter',  label: 'HR',            valueExpr: 'p.home_runs',                                                lowerIsBetter: false },
   walks_total:                 { side: 'hitter',  label: 'BB',            valueExpr: 'p.walks',                                                    lowerIsBetter: false },
@@ -418,6 +432,14 @@ export async function getTeamPlayerStatDistributionFromWarehouse(
          OR p.pitching_games >= ${PITCHER_APPEARANCES_PER_GAME} * (SELECT games FROM games_played)
        )
        AND p.innings_pitched >= ${PITCHER_MIN_IP}`;
+  // Stats whose valueExpr references gpes.* live in
+  // gold_player_expected_stats; pull them in with a LEFT JOIN so a player
+  // with no Statcast row simply nulls out (eligibility filter on
+  // `(spec.valueExpr) IS NOT NULL` will drop them from the strip plot).
+  const needsExpectedJoin = spec.valueExpr.includes('gpes.');
+  const expectedJoin = needsExpectedJoin
+    ? 'LEFT JOIN gold_player_expected_stats gpes ON gpes.season = p.season AND gpes.player_id = p.player_id'
+    : '';
 
   const rows = await query<TeamPlayerDistributionRow>(
     `WITH team_row AS (
@@ -448,6 +470,7 @@ export async function getTeamPlayerStatDistributionFromWarehouse(
        (SELECT team_value FROM team_agg)  AS team_value
        FROM silver_player_season p
        JOIN team_row t ON t.team_id = p.team_id
+       ${expectedJoin}
       WHERE p.season = ${season}
         AND ${ptCol} IS NOT NULL
         AND ${eligibility}

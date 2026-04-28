@@ -6,7 +6,16 @@
  *   2 decimals for floats, integers as-is.
  */
 
-export const SLASH_STATS = new Set(['avg', 'obp', 'slg', 'ops', 'winPct']);
+export const SLASH_STATS = new Set([
+  'avg',
+  'obp',
+  'slg',
+  'ops',
+  'winPct',
+  'xwoba',
+  'woba',
+  'xba',
+]);
 
 export function isSlashStat(statKey: string | undefined): boolean {
   return !!statKey && SLASH_STATS.has(statKey);
