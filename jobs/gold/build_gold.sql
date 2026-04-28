@@ -1174,8 +1174,17 @@ team_day_grouped AS (
         wins,
         losses,
         streak_break,
-        SUM(streak_break) OVER (PARTITION BY team_id ORDER BY game_date
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS streak_group
+        -- streak_group = number of break days STRICTLY BEFORE this row.
+        -- Using `1 PRECEDING` (not `CURRENT ROW`) so a loss day doesn't
+        -- share a streak_group with the wins that follow. Without this,
+        -- ROW_NUMBER below counts the loss day as row 1 of the next
+        -- streak and inflates every win-day streak_length by 1
+        -- (e.g. a 10-game streak gets reported as 11). COALESCE handles
+        -- the very first row, where the preceding window is empty.
+        COALESCE(SUM(streak_break) OVER (
+            PARTITION BY team_id ORDER BY game_date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+        ), 0) AS streak_group
     FROM team_day_flagged
 ),
 team_streaks AS (
@@ -1192,23 +1201,24 @@ team_streaks AS (
         END AS streak_length
     FROM team_day_grouped
 ),
--- A "team milestone day" is a day where the streak length first reaches N
--- (i.e. today's streak > yesterday's) AND today's streak is at least 4.
--- We materialize one row per (team, day) reaching streak_length >= 4 in the
--- last 7 days; the streak length on that day IS the milestone N.
-team_milestone_candidates AS (
-    SELECT
-        team_id,
-        game_date,
-        season,
-        streak_length AS n,
-        LAG(streak_length, 1, 0) OVER (PARTITION BY team_id ORDER BY game_date) AS prev_streak
-    FROM team_streaks
+-- Each team's streak_length on its most recent game day. If they lost
+-- their last game this is 0 (the streak_break CASE in team_streaks zeroes
+-- out the loss day) and the >= 4 filter below drops the row entirely.
+-- One row per team naturally produces only the current peak — no
+-- 8/9/10/11 progression duplicates — and naturally hides broken streaks.
+team_current_streak AS (
+    SELECT team_id, game_date, season, streak_length
+    FROM (
+        SELECT team_id, game_date, season, streak_length,
+               ROW_NUMBER() OVER (PARTITION BY team_id ORDER BY game_date DESC) AS rn
+        FROM team_streaks
+    )
+    WHERE rn = 1
 ),
 team_milestones_raw AS (
-    SELECT team_id, game_date, season, n
-    FROM team_milestone_candidates
-    WHERE n >= 4 AND n > prev_streak
+    SELECT team_id, game_date, season, streak_length AS n
+    FROM team_current_streak
+    WHERE streak_length >= 4
       AND CAST(game_date AS DATE) >= current_date() - INTERVAL '7' DAY
 ),
 -- For each milestone, find the most recent prior day where this team
@@ -1283,8 +1293,13 @@ player_day_grouped AS (
         season,
         hits,
         streak_break,
-        SUM(streak_break) OVER (PARTITION BY player_id ORDER BY game_date
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS streak_group
+        -- Same off-by-one fix as team_day_grouped: 1 PRECEDING so a
+        -- 0-hit day doesn't share streak_group with the subsequent
+        -- hit days. See comment there.
+        COALESCE(SUM(streak_break) OVER (
+            PARTITION BY player_id ORDER BY game_date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+        ), 0) AS streak_group
     FROM player_day_flagged
 ),
 player_streaks AS (
@@ -1300,20 +1315,22 @@ player_streaks AS (
         END AS streak_length
     FROM player_day_grouped
 ),
-player_milestone_candidates AS (
-    SELECT
-        player_id,
-        player_name,
-        game_date,
-        season,
-        streak_length AS n,
-        LAG(streak_length, 1, 0) OVER (PARTITION BY player_id ORDER BY game_date) AS prev_streak
-    FROM player_streaks
+-- Same "alive only, one row per subject" pattern as team_current_streak.
+-- A 0-hit day zeroes streak_length, so a player who had a 12-game streak
+-- but went hitless yesterday won't survive the >= 8 filter.
+player_current_streak AS (
+    SELECT player_id, player_name, game_date, season, streak_length
+    FROM (
+        SELECT player_id, player_name, game_date, season, streak_length,
+               ROW_NUMBER() OVER (PARTITION BY player_id ORDER BY game_date DESC) AS rn
+        FROM player_streaks
+    )
+    WHERE rn = 1
 ),
 player_milestones_raw AS (
-    SELECT player_id, player_name, game_date, season, n
-    FROM player_milestone_candidates
-    WHERE n >= 8 AND n > prev_streak
+    SELECT player_id, player_name, game_date, season, streak_length AS n
+    FROM player_current_streak
+    WHERE streak_length >= 8
       AND CAST(game_date AS DATE) >= current_date() - INTERVAL '7' DAY
 ),
 player_milestone_with_prior AS (
