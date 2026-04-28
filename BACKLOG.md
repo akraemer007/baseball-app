@@ -30,13 +30,22 @@ worktree. The brainstorm archive lives at `make_it_impressive.md`.
 | 1 | ARCH-3, FEAT-2, FEAT-3, FEAT-10, FEAT-14, FEAT-15, FEAT-17 | ✅ |
 | 2 | PIPE-0.5, PIPE-1, PIPE-2, PIPE-3 | ✅ (PIPE-4 odds skipped) |
 | 3 | DERIV-1, DERIV-2, DERIV-3, DERIV-4, DERIV-5, DERIV-6 | ✅ |
-| 4 | FEAT-1, FEAT-4, FEAT-5, FEAT-6, FEAT-7, FEAT-8, FEAT-9, FEAT-13 | ⏭️ next |
-| 5 | ARCH-2, ARCH-5, FEAT-12, FEAT-18 | ⏭️ |
+| 4 | FEAT-1, FEAT-4, FEAT-5, FEAT-6, FEAT-8, FEAT-13 | ⏭️ in review (FEAT-7 abandoned) |
+| 5 | DERIV-7, DERIV-8, ARCH-2, ARCH-5, FEAT-9, FEAT-12, FEAT-18 | ⏭️ |
 
 Other status:
 - **FEAT-11** (recap interest chips) — already-shipped, closed.
 - **FEAT-16** (team roster view) — deferred placeholder pending scope.
 - **PIPE-4** (sportsbook odds) — optional, skipped per backlog.
+- **FEAT-7** (clutch / WPA leaders) — abandoned 2026-04-28. Dispatched and built
+  cleanly, but the underlying metric didn't earn its keep on screen: DERIV-4 v1's
+  coarse logistic + RE24-delta model produced a starter-bias that made elite
+  arms (Skenes, Soriano, Ohtani) look negative while only closers surfaced as
+  "leaders." Decided WPA-as-shown doesn't match the voice we want and the v2
+  model rewrite (canonical Tango WP table) wasn't worth gating the wave on.
+  See FEAT-7 ticket footer for the postmortem.
+- **DERIV-4** (`gold_player_clutch`) — orphaned by FEAT-7 abandonment.
+  Removal tracked by **DERIV-8** in Wave 5.
 
 **Cleanup pile (`tasks/post_wave3_cleanup.md`):**
 ✅ ingest tasks parallelized (all 4 from zero, commit `794dda4`) ·
@@ -1253,6 +1262,130 @@ Commit clean.
 
 **Notes / risks:** LLM cost is ~$0.01 per digest; generating for
 30 teams every week is ~$1.50/mo — fine even at MLB-wide scale.
+v1 only generates for primary-team picks; DERIV-7 extends to all 30
+once FEAT-9 needs them.
+
+---
+
+### DERIV-7 — Extend weekly digest job to all 30 teams
+
+**Lane:** derivation (LLM)
+**Status:** unblocked · **Blocks:** FEAT-9
+**Scope:** Today `weekly_digest_job` only generates rows for primary
+teams pinned by real users (CHC + occasional secondary). Extend it to
+write a digest for every team_id every Sunday so FEAT-9 can render on
+any team page, not just the primary's.
+
+**Acceptance criteria:**
+
+- `gold_weekly_digest` has a row for every active team_id at the
+  most recent week_start.
+- `--force` rewrites all teams; default skips weeks already populated
+  per (team_id, week_start).
+- Prompt framing no longer assumes "primary team" — works for any
+  team name. Voice unchanged.
+- Cost stays in the ~$0.30/Sunday / ~$1.50/month range already noted
+  in DERIV-6's risks (no batching needed).
+
+**Files expected to change:**
+
+- MODIFY `jobs/digest/generate_weekly_digest.py`
+- MODIFY `jobs/digest/prompts/weekly_digest.md` (if framing changes)
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on DERIV-7.
+
+Goal: weekly_digest_job currently iterates over a hardcoded short list
+of primary teams (see generate_weekly_digest.py). Replace that loop
+with the full set of active team_ids from silver_team for the current
+season. Everything else stays the same — prompt, idempotency,
+scheduling, output table.
+
+Steps:
+1. Replace the primary-team source with a query against silver_team
+   (active teams for the current season).
+2. Audit the prompt template at jobs/digest/prompts/weekly_digest.md
+   for any "primary team" framing — neutralize so it reads naturally
+   for the Rockies, Royals, etc.
+3. Confirm idempotency gate keys on (team_id, week_start) — should
+   already be the case.
+4. Run a one-shot --force backfill against the most recent week and
+   spot-check 3 random non-primary teams' digest_text quality.
+
+Do not change the schedule or surface in UI — FEAT-9 handles surfacing.
+
+Commit clean.
+```
+
+**Notes / risks:** None — cost was already vetted in DERIV-6.
+
+---
+
+### DERIV-8 — Deprecate `gold_player_clutch` (FEAT-7 cleanup)
+
+**Lane:** derivation (cleanup)
+**Status:** unblocked · **Blocks:** none
+**Scope:** Remove DERIV-4's `gold_player_clutch` materialization from
+the hourly pipeline now that FEAT-7 (its only consumer) was abandoned.
+The table costs ~nothing in storage but the WP-model logic runs every
+hour for nothing. Clean it up while context is fresh; easy to re-add
+later if clutch metrics find a different home.
+
+**Acceptance criteria:**
+
+- DERIV-4's full block removed from `jobs/gold/build_gold.sql`
+  (the `gold_player_clutch (DERIV-4)` header through the trailing
+  spot-check comment, ~250 lines including base_out_re lookup and
+  all CTEs).
+- `gold_player_clutch` dropped from UC after the next hourly run
+  confirms nothing else regresses.
+- DERIV-4 ticket marked deprecated in BACKLOG.md.
+- Dependency map + Wave 3 progress row footnote DERIV-4 as
+  retired-by-DERIV-8.
+
+**Files expected to change:**
+
+- MODIFY `jobs/gold/build_gold.sql`
+- MODIFY `BACKLOG.md` (mark DERIV-4 deprecated)
+- One-shot SQL: `DROP TABLE IF EXISTS gold_player_clutch`
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on DERIV-8.
+
+Goal: remove DERIV-4's orphaned gold_player_clutch table now that
+FEAT-7 (its only UI consumer) was abandoned.
+
+Steps:
+1. In jobs/gold/build_gold.sql, delete the entire block starting at
+   the `-- gold_player_clutch (DERIV-4)` header comment through the
+   trailing spot-check comment block. Confirm no other CTE in the
+   file references `gold_player_clutch` or its intermediate CTEs
+   (base_out_re, plays_with_after, plays_pa, league_avg, plays_lev,
+   batter_agg, pitcher_agg, all_agg) — they should all be local to
+   this block.
+2. Run `databricks bundle validate` to confirm SQL still parses.
+3. Drop the live table:
+     DROP TABLE IF EXISTS
+       production_forecasting_catalog.ak_baseball.gold_player_clutch
+   Run AFTER the next hourly pipeline run confirms the SQL change
+   didn't break anything else.
+4. Update BACKLOG.md: DERIV-4 ticket header marked deprecated with
+   reason ("FEAT-7 abandoned; orphan table removed via DERIV-8").
+   Strike DERIV-4 from any dependency-map / unblocked-list lines
+   that still reference it.
+
+Do not touch app/ — FEAT-7's UI work was already discarded with its
+branch.
+
+Commit clean.
+```
+
+**Notes / risks:** Low. `gold_player_clutch` is a leaf in the
+dependency map — no other gold table or app query reads it.
 
 ---
 
@@ -1656,14 +1789,41 @@ dense — match the voice everywhere else.
 
 ---
 
-### FEAT-7 — Clutch / WPA leaders widget
+### FEAT-7 — Clutch / WPA leaders widget — **ABANDONED 2026-04-28**
 
 **Lane:** client + server
-**Status:** blocked by: DERIV-4 · **Blocks:** none
+**Status:** abandoned · **Blocks:** none
 **Scope:** On the League page or Team page (TBD after
 placement review), a small section titled "Clutch leaders"
 showing the top 5 MLB batters by wpa_total, and the top 5
 pitchers. Each row: player, team color, wpa_total.
+
+**Why abandoned (postmortem):** Implementation worked end-to-end; the
+problem was the metric itself in our v1 form. DERIV-4's coarse
+logistic + RE24-delta WP model has a known starter-bias (acknowledged
+in the SQL header TODO) that's sharp enough to flip the leaderboard:
+- Per warehouse spot-check: 1318/1829 batters net-positive WPA, but
+  only 141/1489 pitchers. Avg pitcher WPA −0.36 vs avg batter +0.30.
+- Spot-check elite 2026 arms in our data: José Soriano (LAA) −0.07,
+  Ohtani −0.39, Skenes −0.66, Riley O'Brien −0.84, Boyd −1.35. Those
+  read wrong even after acknowledging WPA's ordinary starter penalty.
+- Top-5 pitchers became a closer-only list (Iglesias, Helsley, Mason
+  Miller). Honest reading of what the model measures, but reads weird
+  to a user expecting "best pitcher" semantics.
+
+We considered: (A) shipping with a "based on internal leverage model"
+disclaimer, (B) splitting starters/closers, (C) gating the ticket on a
+DERIV-4 v2 with canonical Tango WP tables. Decided none of those was
+worth the screen real estate or the v2 work right now.
+
+**Tables that powered the runtime query** (in case clutch data finds
+a different home later):
+- `gold_player_clutch` (DERIV-4 output)
+- `silver_player_season` (team_id, plus at_bats / innings_pitched /
+  pitching_games for qualifier)
+- `silver_team` (abbrev, primary_color)
+- `silver_team_game` + `silver_game` (per-team games-played, for the
+  qualifier scaling — added late in review)
 
 **Acceptance criteria:**
 
@@ -1705,6 +1865,9 @@ Commit clean.
 
 **Notes / risks:** WPA units are in wins (decimal, e.g., +2.1).
 Format as `+2.1` with signed leading.
+
+(Original notes preserved above for context. Ticket abandoned —
+see header postmortem.)
 
 ---
 
@@ -1760,51 +1923,75 @@ Commit clean.
 
 ---
 
-### FEAT-9 — Weekly digest on home page
+### FEAT-9 — Weekly digest card on team page
 
 **Lane:** client + server
-**Status:** blocked by: DERIV-6 · **Blocks:** none
-**Scope:** A prose "this week in <primary team> baseball"
-paragraph on the home page every Sunday–Wednesday. Disappears
-or dims mid-week once the next week's games start.
+**Status:** blocked by: DERIV-7 · **Blocks:** none
+**Scope:** A prose "this week in <team name> baseball" card on every
+team page, sourced from `gold_weekly_digest`. Replaces the original
+home-page-primary-only design — surfacing on team page lets every
+team have one without requiring the user to pin them.
 
 **Acceptance criteria:**
 
-- Above the milestone strip on home page: a short "This week in
-  <primary team name> baseball" card with the generated
-  paragraph.
-- Hides if no digest for this week or if >4 days into the new
-  week.
-- Primary team color tint, monospace byline.
+- New card on team page below the header / above the trajectory chart
+  (placement TBD during review).
+- Server route `GET /api/team/:teamId/digest` returns the most recent
+  digest row for that team, or 404 if none.
+- Card hides when API returns 404 OR when today > week_end + 4 days
+  (i.e. Friday onward of the new week — so Sun–Thu of the new week
+  still render the prior Mon–Sun digest).
+- Voice: serif body slightly larger than recap-body so it reads as
+  prose; monospace byline like `WEEKLY DIGEST · ATL`.
+- Tint: subtle team-color tint + 3px left border on the user's
+  primary team only. Other team pages: neutral border.
+- Opening-day / pre-first-Sunday: card silently absent.
 
 **Files expected to change:**
 
 - MODIFY `app/server/src/queries/index.ts`
-- MODIFY `app/server/src/routes/league.ts`
+- MODIFY `app/server/src/routes/team.ts`
 - NEW `app/client/src/components/WeeklyDigest.tsx`
-- MODIFY `app/client/src/pages/LeaguePage.tsx`
+- MODIFY `app/client/src/pages/TeamPage.tsx`
+- MODIFY `app/shared/types/team.ts`
 
 **Agent prompt:**
 
 ```
 You are in a git worktree branched off main, working on FEAT-9.
-DERIV-6 has landed; gold_weekly_digest has rows for the primary
-team.
+DERIV-7 has landed; gold_weekly_digest is populated for every team.
 
 Steps:
-1. Server: GET /api/league/weekly-digest?team=CHC → the most
-   recent digest row for that team, or 404 if none.
-2. Client: WeeklyDigest.tsx — card with subtitle "Week ending
-   <week_end_date>" + paragraph body.
-3. Hide after Wednesday of the next week (per spec).
+1. Server: add GET /api/team/:teamId/digest. Most-recent row by
+   week_start desc, joined to silver_team for name + primary_color.
+   Return 404 when no row.
+2. Client: WeeklyDigest.tsx takes teamId + isPrimary as props. Card
+   with monospace byline ("WEEKLY DIGEST · <abbrev>"), headline
+   ("This week in <team name> baseball"), subtitle ("Week ending
+   <Month Day>"), serif body at 1.1rem.
+3. Mount on TeamPage above the trajectory chart. Compute isPrimary
+   from PreferencesContext; pass to component.
+4. Hide-after threshold: today > week_end + 4 days, computed
+   client-side via DST-safe component math (mirror NewsSection's
+   shiftIsoDate helper).
 
-Visual style: slightly larger body text than recap cards (this
-is meant to be read prose, not scanned).
+Visual style: serif body, monospace byline. Primary-team tint =
+border-left 3px team-color + linear-gradient(to right, ${color}14,
+var(--bg-elev) 40%). Non-primary teams: 1px neutral border.
 
-Commit clean.
+Add WeeklyDigestResponse to app/shared/types/team.ts. Barrel
+auto-re-exports.
+
+Verify: cd app && npm run build clean. Visit /team/CHC and
+/team/COL — both render their own digests when present.
+
+Commit clean with message:
+  FEAT-9: weekly digest card on team page
 ```
 
-**Notes / risks:** None.
+**Notes / risks:** Originally scoped as a home-page card for the
+primary team only (Wave 4); rescoped after first attempt revealed
+the "30 teams or 1?" question. Per-team coverage handled by DERIV-7.
 
 ---
 
@@ -1950,29 +2137,51 @@ are worse than misses.
 
 ---
 
-### FEAT-13 — Injury / transactions ribbon on recap cards
+### FEAT-13 — Recent transactions section on League page
 
 **Lane:** client + server
-**Status:** blocked by: PIPE-2 · **Blocks:** none
-**Scope:** When a recap mentions a player who had a roster move
-within 24 hours (IL, call-up, DFA), show a small ribbon on the
-recap card: "Ian Happ placed on 10-day IL (hamstring) — Apr 22".
+**Status:** unblocked · **Blocks:** none
+**Scope:** A small paginated table below the recap section on the
+League page showing the last 7 days of significant MLB roster moves
+across all 30 teams. Single chronological list, most recent first.
+Each row tagged with the affected team's primary color.
 
 **Acceptance criteria:**
 
-- Recap response includes `relevantTransactions` — array of
-  moves affecting players in that game's box score within 24
-  hours either side of the game date.
-- Ribbon renders just below the headline in the recap card,
-  small italic text. Max 2 visible; "+N more" link for the
-  rest.
-- No ribbon if the array is empty.
+- New section below `NewsSection` on the League page titled
+  "Recent transactions" (or similar — agent can pick).
+- Server route `GET /api/league/transactions?days=7` returns all
+  significant transactions in the last 7 days, sorted desc by
+  effective_date then transaction_id. Capped to ~50 rows server-side.
+- "Significant" filter on `transaction_type` (start with this
+  allowlist; widen at review if useful types are missing):
+    `IL10`, `IL15`, `IL60` — injury list placements
+    `ACT`, `ACTV`        — activations off IL
+    `DFA`                — designated for assignment
+    `SE`                 — released
+    `CU`, `RECALL`       — call-ups from minors
+    `TR`                 — trades
+  Exclude minor-league assignments, options to AAA, contract status
+  noise.
+- Display: small table with columns `date · player · team · move`.
+  Date as "Apr 22"; team rendered as a small abbrev pill tinted in
+  the team's primary color; move = `description` (fallback to
+  `<typeCode>` if description is null).
+- Pagination: client-side, 10 rows per page. Prev/Next pills below
+  the table only when total > pageSize. No URL state.
+- Empty array → section silently absent.
 
 **Files expected to change:**
 
-- MODIFY `app/server/src/queries/index.ts`
-- MODIFY `app/client/src/components/NewsSection.tsx`
-- MODIFY `app/shared/types/recap.ts`
+- MODIFY `app/server/src/queries/index.ts` (new
+  `getRecentTransactionsFromWarehouse`)
+- MODIFY `app/server/src/routes/league.ts` (new route)
+- MODIFY `app/server/src/mocks/data.ts` (deterministic mock)
+- NEW `app/client/src/components/RecentTransactions.tsx`
+- MODIFY `app/client/src/pages/LeaguePage.tsx` (mount below
+  `NewsSection`)
+- MODIFY `app/shared/types/league.ts` (`TransactionEvent` +
+  `RecentTransactionsResponse`)
 
 **Agent prompt:**
 
@@ -1980,23 +2189,78 @@ recap card: "Ian Happ placed on 10-day IL (hamstring) — Apr 22".
 You are in a git worktree branched off main, working on FEAT-13.
 PIPE-2 has landed; silver_transaction exists.
 
+CRITICAL DISCIPLINE: stay inside your worktree. Run `pwd` first
+and confirm you are in `.claude/worktrees/agent-XXX/`. Use ONLY
+relative paths in Edit / Write / Read / Bash. Do NOT touch
+absolute paths like /Users/andrew.kraemer/projects/0_personal_repos/
+ak_baseball/... — those leak edits into the main project tree.
+
+Goal: a small paginated table on the League page showing the last
+7 days of significant MLB roster moves across all 30 teams.
+
 Steps:
-1. Server: join silver_transaction against box-score
-   participants (silver_player_game_batting +
-   silver_player_game_pitching). Include transactions within
-   ±24h of game_date. Add to recap response as
-   relevantTransactions.
-2. Client: render max 2 above the recap body. Small italic
-   text: "Ian Happ placed on 10-day IL (hamstring) · Apr 22".
+1. Server: new getRecentTransactionsFromWarehouse(days=7) selecting
+   from silver_transaction joined to silver_team for primary_color
+   + abbrev. Filter on transaction_type IN allowlist:
+     IL10, IL15, IL60, ACT, ACTV, DFA, SE, CU, RECALL, TR
+   Order by effective_date DESC, transaction_id DESC. Cap to ~50
+   rows server-side; client paginates within that.
 
-Keep it visually inside the recap card — same padding, no new
-card.
+2. Server: new route GET /api/league/transactions?days=7. Default
+   days=7. Validate days as a small integer (1-30). Response shape:
+   { transactions: TransactionEvent[] }.
 
-Commit clean.
+3. Mocks: deterministic ~12 fake transactions in mocks/data.ts so
+   dev mode renders the table.
+
+4. Client: RecentTransactions.tsx — small text-dense table.
+   Columns: date · player · team · move.
+   Date format "Apr 22" (use a local plain-string parse like the
+   FEAT-13-prior NewsSection.tsx had — no Date(), no timezone drift).
+   Team column = small monospace abbrev pill with background color
+   = primary_color at low opacity (e.g. ${color}1f), text in
+   primary_color or contrast text. Pattern like an existing recap
+   card's team-color treatment.
+   Pagination: useState page index, 10 rows per page. Prev/Next
+   pills below the table when total > pageSize.
+
+5. Mount on LeaguePage.tsx below the existing NewsSection. Hide
+   the entire section when the response is empty.
+
+6. Voice: monospace for date and team-abbrev pill; sans for the
+   description text. Small font (~0.78rem) consistent with other
+   text-dense tables.
+
+Add types to app/shared/types/league.ts:
+  TransactionEvent {
+    transactionId, playerId, playerName,
+    transactionType, description, effectiveDate,
+    teamAbbrev, teamColor
+  }
+  RecentTransactionsResponse { transactions: TransactionEvent[] }
+
+DO NOT: touch jobs/, pipeline, or recap card files. The previous
+FEAT-13 attempt (now discarded) tried to inline this on recap
+cards — that's not the design anymore.
+
+Verify: cd app && npm run build clean.
+
+Commit in your worktree with message:
+  FEAT-13: recent transactions section on League page
+DO NOT push.
+
+Report: branch, commit SHA, files changed (`git diff main --stat`),
+build result, the SQL written, transaction_type counts you observed
+in dev (helpful for tuning the allowlist), any caveats.
 ```
 
-**Notes / risks:** Don't duplicate across multiple recap days
-if the same transaction affects multiple games.
+**Notes / risks:** Allowlist is a starting guess. If a frequently-
+populated useful type is missing (or a noisy one slips through),
+adjust at review time — easy one-line change.
+
+Originally scoped (Wave 4 first attempt) as inline ribbons on
+recap cards; rescoped after first impl revealed it read better as
+a standalone league-wide section.
 
 ---
 
@@ -2315,7 +2579,7 @@ PIPE-4 (odds) — optional, no downstream
 
 DERIV-2 (bullpen) ─> FEAT-5                  (no pipeline blocker)
 DERIV-3 (SoS)     ─> FEAT-6                  (no pipeline blocker)
-DERIV-6 (weekly digest) ─> FEAT-9
+DERIV-6 (weekly digest, primary-team v1) ─> DERIV-7 ─> FEAT-9
 
 Unblocked right now (post-Wave-3, 2026-04-27):
   ARCH-5  — recap test harness (cleanup)
@@ -2324,10 +2588,10 @@ Unblocked right now (post-Wave-3, 2026-04-27):
   FEAT-4  — xwOBA card on team page          (DERIV-1 done)
   FEAT-5  — bullpen fatigue surface          (DERIV-2 done)
   FEAT-6  — strength of schedule tooltip     (DERIV-3 done)
-  FEAT-7  — clutch leaders widget            (DERIV-4 done)
+  FEAT-7  — ABANDONED 2026-04-28 (metric didn't earn screen real estate)
   FEAT-8  — milestone callouts on home page  (DERIV-5 done)
-  FEAT-9  — weekly digest on home page       (DERIV-6 done — table empty
-            until weekly_digest_job runs Sunday or is force-triggered)
+  DERIV-7 — extend weekly digest job to all 30 teams (blocks FEAT-9)
+  FEAT-9  — weekly digest card on team page  (blocked by DERIV-7)
   FEAT-12 — recap inline player hyperlinks
   FEAT-13 — injury / transactions ribbon     (PIPE-2 done)
   FEAT-18 — trajectory window zoom
@@ -2409,13 +2673,16 @@ After derivations, these light up:
 - FEAT-6 (SoS tooltip) — needs DERIV-3
 - FEAT-7 (clutch leaders) — needs DERIV-4
 - FEAT-8 (milestones) — needs DERIV-5
-- FEAT-9 (weekly digest) — needs DERIV-6
 - FEAT-13 (transactions ribbon) — needs PIPE-2
 
 Also parallel-safe (each hits a different route + component).
 
-### Wave 5 — "tests + tidy"
+### Wave 5 — "tests, tidy, and the team-page digest"
 
+- DERIV-7 (per-team weekly digest pipeline) — must land before FEAT-9.
+- DERIV-8 (deprecate `gold_player_clutch`) — FEAT-7 cleanup. Quick
+  pipeline-side change; can land first or last.
+- FEAT-9 (weekly digest on team page) — needs DERIV-7.
 - ARCH-5 (recap tests) — drop in at any point once pipeline is
   stable.
 - FEAT-12 (player hyperlinks) — can be done earlier; slot when
