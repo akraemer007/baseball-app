@@ -30,7 +30,7 @@ worktree. The brainstorm archive lives at `make_it_impressive.md`.
 | 1 | ARCH-3, FEAT-2, FEAT-3, FEAT-10, FEAT-14, FEAT-15, FEAT-17 | ✅ |
 | 2 | PIPE-0.5, PIPE-1, PIPE-2, PIPE-3 | ✅ (PIPE-4 odds skipped) |
 | 3 | DERIV-1, DERIV-2, DERIV-3, DERIV-4, DERIV-5, DERIV-6 | ✅ |
-| 4 | FEAT-1, FEAT-4, FEAT-5, FEAT-6, FEAT-8, FEAT-13 | ⏭️ in review (FEAT-7 abandoned) |
+| 4 | FEAT-1, FEAT-4, FEAT-8 | ⏭️ in review (FEAT-5/6/7/13 abandoned) |
 | 5 | DERIV-7, DERIV-8, ARCH-2, ARCH-5, FEAT-9, FEAT-12, FEAT-18 | ⏭️ |
 
 Other status:
@@ -44,8 +44,32 @@ Other status:
   "leaders." Decided WPA-as-shown doesn't match the voice we want and the v2
   model rewrite (canonical Tango WP table) wasn't worth gating the wave on.
   See FEAT-7 ticket footer for the postmortem.
-- **DERIV-4** (`gold_player_clutch`) — orphaned by FEAT-7 abandonment.
-  Removal tracked by **DERIV-8** in Wave 5.
+- **DERIV-2/3/4** (`gold_reliever_workload`, `gold_team_sos`,
+  `gold_player_clutch`) — orphaned by FEAT-5/6/7 abandonments.
+  Cleanup tracked by **DERIV-8** in Wave 5 (consolidated to cover all
+  three tables).
+- **FEAT-5** (bullpen fatigue surface) — abandoned 2026-04-28. Built
+  cleanly but the user decided the scope wasn't well thought through;
+  doesn't earn a card on the team page. `gold_reliever_workload`
+  becomes orphaned (see DERIV-8).
+- **FEAT-6** (strength of schedule tooltip) — abandoned 2026-04-28.
+  Same reason as FEAT-5; SoS as a single-number-with-tooltip didn't
+  earn the team-header real estate. `gold_team_sos` becomes orphaned.
+- **FEAT-13** (transactions section) — abandoned 2026-04-28 after a
+  second pivot. v1 was inline ribbons on recap cards (built and
+  discarded mid-review when scope was rethought), v2 was a standalone
+  paginated table on the League page (built clean). v2 spot-check
+  revealed the typeCode allowlist barely matched the real data —
+  IL placements live under `SC` with description text, the real DFA
+  code is `DES` not `DFA`, and `IL10/IL15/IL60` don't appear at all.
+  Allowlist fix was straightforward but the broader call: a
+  transactions feed didn't earn its space. See FEAT-13 ticket footer.
+- **PIPE-2** (`silver_transaction` ingest) — orphaned by FEAT-13
+  abandonment. Nothing else reads `silver_transaction`. Unlike
+  `gold_player_clutch`, the raw transactions data has broader
+  potential value (recap enrichment, weekly digest narrative, future
+  team news surface). Not deprecating yet; flag if the cost of
+  ingesting roster moves becomes noticeable.
 
 **Cleanup pile (`tasks/post_wave3_cleanup.md`):**
 ✅ ingest tasks parallelized (all 4 from zero, commit `794dda4`) ·
@@ -1323,69 +1347,117 @@ Commit clean.
 
 ---
 
-### DERIV-8 — Deprecate `gold_player_clutch` (FEAT-7 cleanup)
+### DERIV-8 — Deprecate orphaned gold tables (FEAT-5/6/7 cleanup)
 
 **Lane:** derivation (cleanup)
 **Status:** unblocked · **Blocks:** none
-**Scope:** Remove DERIV-4's `gold_player_clutch` materialization from
-the hourly pipeline now that FEAT-7 (its only consumer) was abandoned.
-The table costs ~nothing in storage but the WP-model logic runs every
-hour for nothing. Clean it up while context is fresh; easy to re-add
-later if clutch metrics find a different home.
+**Scope:** Three derivation tables lost their only UI consumers when
+Wave 4 features were abandoned. All three are leaves in the
+dependency map — no downstream gold or app query reads them.
+
+| Table | DERIV ticket | Abandoned consumer |
+|---|---|---|
+| `gold_player_clutch` | DERIV-4 | FEAT-7 (clutch leaders widget) |
+| `gold_team_sos` | DERIV-3 | FEAT-6 (SoS tooltip) |
+| `gold_reliever_workload` | DERIV-2 | FEAT-5 (bullpen fatigue) |
+
+**Don't blanket-deprecate.** When this ticket runs, the agent must
+prompt the user per-table: keep building it (might be used in a
+future feature) or actually drop it (clear it out). The agent should
+not delete any CTE block or run any `DROP TABLE` until the user
+confirms per-table — some of these metrics may earn a different
+home later and the user wants the choice.
+
+PIPE-2 (`silver_transaction`, orphaned by FEAT-13) follows the same
+"ask first" rule. Mention it in the prompt and let the user decide
+whether to keep ingesting roster moves.
 
 **Acceptance criteria:**
 
-- DERIV-4's full block removed from `jobs/gold/build_gold.sql`
-  (the `gold_player_clutch (DERIV-4)` header through the trailing
-  spot-check comment, ~250 lines including base_out_re lookup and
-  all CTEs).
-- `gold_player_clutch` dropped from UC after the next hourly run
+- Each table's CTE block removed from `jobs/gold/build_gold.sql`.
+  For `gold_player_clutch`, that's ~250 lines (header through
+  spot-check, including base_out_re / plays_with_after / plays_pa /
+  league_avg / plays_lev / batter_agg / pitcher_agg / all_agg).
+  `gold_team_sos` and `gold_reliever_workload` are smaller blocks.
+- All three live tables dropped from UC after the next hourly run
   confirms nothing else regresses.
-- DERIV-4 ticket marked deprecated in BACKLOG.md.
-- Dependency map + Wave 3 progress row footnote DERIV-4 as
+- DERIV-2/3/4 tickets marked deprecated in BACKLOG.md.
+- Dependency map + Wave 3 progress row footnote each as
   retired-by-DERIV-8.
 
 **Files expected to change:**
 
-- MODIFY `jobs/gold/build_gold.sql`
-- MODIFY `BACKLOG.md` (mark DERIV-4 deprecated)
-- One-shot SQL: `DROP TABLE IF EXISTS gold_player_clutch`
+- MODIFY `jobs/gold/build_gold.sql` (delete three CTE blocks)
+- MODIFY `BACKLOG.md` (mark DERIV-2/3/4 deprecated)
+- One-shot SQL:
+  - `DROP TABLE IF EXISTS gold_player_clutch`
+  - `DROP TABLE IF EXISTS gold_team_sos`
+  - `DROP TABLE IF EXISTS gold_reliever_workload`
 
 **Agent prompt:**
 
 ```
 You are in a git worktree branched off main, working on DERIV-8.
 
-Goal: remove DERIV-4's orphaned gold_player_clutch table now that
-FEAT-7 (its only UI consumer) was abandoned.
+Goal: clean up gold tables orphaned by abandoned Wave 4 features
+— BUT don't assume "abandoned consumer" means "drop the table."
+The user wants to decide per-table because some of these metrics
+might find a future home.
 
-Steps:
-1. In jobs/gold/build_gold.sql, delete the entire block starting at
-   the `-- gold_player_clutch (DERIV-4)` header comment through the
-   trailing spot-check comment block. Confirm no other CTE in the
-   file references `gold_player_clutch` or its intermediate CTEs
-   (base_out_re, plays_with_after, plays_pa, league_avg, plays_lev,
-   batter_agg, pitcher_agg, all_agg) — they should all be local to
-   this block.
-2. Run `databricks bundle validate` to confirm SQL still parses.
-3. Drop the live table:
-     DROP TABLE IF EXISTS
-       production_forecasting_catalog.ak_baseball.gold_player_clutch
-   Run AFTER the next hourly pipeline run confirms the SQL change
-   didn't break anything else.
-4. Update BACKLOG.md: DERIV-4 ticket header marked deprecated with
-   reason ("FEAT-7 abandoned; orphan table removed via DERIV-8").
-   Strike DERIV-4 from any dependency-map / unblocked-list lines
-   that still reference it.
+STEP 0 — Ask the user (BEFORE any code or SQL changes):
 
-Do not touch app/ — FEAT-7's UI work was already discarded with its
-branch.
+Present this list and ask for a per-row decision (drop / keep):
+
+  - gold_player_clutch (DERIV-4) → consumer FEAT-7 abandoned
+  - gold_team_sos       (DERIV-3) → consumer FEAT-6 abandoned
+  - gold_reliever_workload (DERIV-2) → consumer FEAT-5 abandoned
+  - silver_transaction  (PIPE-2)  → consumer FEAT-13 abandoned
+                                    (mention but ingest path is
+                                    different from gold tables)
+
+For each, the user picks one of:
+  (a) DROP   — delete the build block from build_gold.sql / refine
+               job, drop the live table, mark the DERIV/PIPE ticket
+               deprecated.
+  (b) KEEP   — leave the build alone, add a one-line "kept pending
+               future use" note on the DERIV/PIPE ticket so a
+               future reviewer knows it's deliberately orphaned.
+
+WAIT for the user's answer before touching anything.
+
+STEP 1 — For each table the user said DROP:
+  - Remove its CTE block from jobs/gold/build_gold.sql (or for
+    silver_transaction, neutralize the refine job — easier path is
+    leaving the ingest off-schedule rather than deleting code).
+  - Verify no other CTE references the deleted block.
+  - Run `databricks bundle validate` to confirm SQL parses.
+
+STEP 2 — Drop the live tables the user picked DROP for, AFTER the
+next hourly pipeline run confirms the SQL change didn't regress
+anything. Use:
+  DROP TABLE IF EXISTS
+    production_forecasting_catalog.ak_baseball.<table>;
+
+STEP 3 — BACKLOG.md updates:
+  - For DROP tables: mark the source DERIV/PIPE ticket deprecated
+    with reason "Consumer FEAT-X abandoned; table removed via
+    DERIV-8".
+  - For KEEP tables: add a one-line note on the source ticket
+    ("Kept pending future use — orphaned 2026-04-XX, no current
+    consumer").
+  - Strike any remaining stale dependency-map / unblocked-list
+    references.
+
+Do not touch app/ — FEAT-5/6/7 UI work was already discarded with
+their branches.
 
 Commit clean.
 ```
 
-**Notes / risks:** Low. `gold_player_clutch` is a leaf in the
-dependency map — no other gold table or app query reads it.
+**Notes / risks:** The blanket "drop everything" instinct is wrong
+here — the user wants explicit per-table calls because some metrics
+may resurface. Worst case for KEEP tables: ~hourly compute cost on
+data nobody reads, which is negligible.
 
 ---
 
@@ -1681,10 +1753,20 @@ player-distribution query needs to join accordingly.
 
 ---
 
-### FEAT-5 — Bullpen fatigue surface on team page
+### FEAT-5 — Bullpen fatigue surface on team page — **ABANDONED 2026-04-28**
 
 **Lane:** client + server
-**Status:** blocked by: DERIV-2 · **Blocks:** none
+**Status:** abandoned · **Blocks:** none
+
+**Why abandoned:** Built cleanly (worktree commit `d7c1c64`) but the
+scope didn't survive review. User's call: not enough thought went
+into whether a bullpen-usage card earned its place on the team page.
+`gold_reliever_workload` (DERIV-2) becomes orphaned; cleanup folded
+into DERIV-8.
+
+**Tables that powered the runtime query** (preserved for context):
+- `gold_reliever_workload` (DERIV-2 output)
+- `silver_team`
 **Scope:** A compact card below the next-game projection showing
 the team's high-leverage relievers' 3-day / 7-day usage so the
 fan can intuit "we might not have Alzolay tonight."
@@ -1740,10 +1822,20 @@ don't filter-out early in SQL.
 
 ---
 
-### FEAT-6 — Strength of schedule tooltip
+### FEAT-6 — Strength of schedule tooltip — **ABANDONED 2026-04-28**
 
 **Lane:** client + server
-**Status:** blocked by: DERIV-3 · **Blocks:** none
+**Status:** abandoned · **Blocks:** none
+
+**Why abandoned:** Built cleanly (worktree commit `e6a45c1`) but the
+scope didn't survive review. User's call: SoS as a single-number-
+with-tooltip didn't earn its real estate on the team header.
+`gold_team_sos` (DERIV-3) becomes orphaned; cleanup folded into
+DERIV-8.
+
+**Tables that powered the runtime query** (preserved for context):
+- `gold_team_sos` (DERIV-3 output)
+- `silver_team` (already on the page)
 **Scope:** Small tooltip on the team record line showing
 current-season SoS: `55-45 (SoS: .547)` with hover explaining
 what SoS means and flagging whether it's tough / easy / average.
@@ -2137,14 +2229,41 @@ are worse than misses.
 
 ---
 
-### FEAT-13 — Recent transactions section on League page
+### FEAT-13 — Recent transactions section on League page — **ABANDONED 2026-04-28**
 
 **Lane:** client + server
-**Status:** unblocked · **Blocks:** none
+**Status:** abandoned · **Blocks:** none
 **Scope:** A small paginated table below the recap section on the
 League page showing the last 7 days of significant MLB roster moves
 across all 30 teams. Single chronological list, most recent first.
 Each row tagged with the affected team's primary color.
+
+**Why abandoned (postmortem):** Two pivots before landing here, then a
+third reconsideration killed it.
+- v1 was inline ribbons on recap cards (`relevantTransactions` per
+  game). Built clean, then discarded mid-review when "the scope feels
+  wrong" surfaced — better as a section than a per-card ribbon.
+- v2 was this standalone paginated table. Built clean, dev spot-check.
+  The typeCode allowlist (`IL10/IL15/IL60/ACT/ACTV/DFA/SE/CU/RECALL/
+  TR`) only matched ~66 rows over 7 MLB days because:
+  - IL placements actually live under `SC` (Status Change) with the IL
+    detail in the description text, not `IL10/IL15/IL60`.
+  - The real DFA code in this data is `DES` (19 rows in 7d), not `DFA`
+    (only 5 stale-format rows remained).
+  - `ACT/ACTV/RECALL` don't appear in `silver_transaction` at all.
+  Hybrid filter fix (`type IN (CU, SE, DES, DFA, TR, CLW) OR (type='SC'
+  AND description LIKE '%injured list%')`) was a straightforward 2-line
+  edit and would have lifted coverage to ~138 rows / 7d.
+- Decided the broader question — does a transactions feed deserve
+  screen real estate at all on this app? — was no. The recap cards
+  already mention notable injuries inline when relevant, and the
+  League page doesn't need another competing list.
+
+**Tables that powered the runtime query** (in case transactions data
+finds a different home later, e.g. recap enrichment):
+- `silver_transaction` (PIPE-2 output)
+- `silver_team` (abbrev, primary_color, plus implicit MLB-only filter
+  via JOIN since silver_team is 30 MLB teams)
 
 **Acceptance criteria:**
 
@@ -2577,8 +2696,8 @@ PIPE-2 (transactions)  ─> FEAT-13
 PIPE-3 (backfill 2020+) ─> DERIV-5 ─> FEAT-8
 PIPE-4 (odds) — optional, no downstream
 
-DERIV-2 (bullpen) ─> FEAT-5                  (no pipeline blocker)
-DERIV-3 (SoS)     ─> FEAT-6                  (no pipeline blocker)
+DERIV-2 (bullpen) ─> FEAT-5 ABANDONED        (orphan, see DERIV-8)
+DERIV-3 (SoS)     ─> FEAT-6 ABANDONED        (orphan, see DERIV-8)
 DERIV-6 (weekly digest, primary-team v1) ─> DERIV-7 ─> FEAT-9
 
 Unblocked right now (post-Wave-3, 2026-04-27):
@@ -2586,14 +2705,14 @@ Unblocked right now (post-Wave-3, 2026-04-27):
   ARCH-2  — progressive disclosure (optional UX layer)
   FEAT-1  — matchup preview on Today's Games
   FEAT-4  — xwOBA card on team page          (DERIV-1 done)
-  FEAT-5  — bullpen fatigue surface          (DERIV-2 done)
-  FEAT-6  — strength of schedule tooltip     (DERIV-3 done)
+  FEAT-5  — ABANDONED 2026-04-28 (scope didn't earn its space)
+  FEAT-6  — ABANDONED 2026-04-28 (scope didn't earn its space)
   FEAT-7  — ABANDONED 2026-04-28 (metric didn't earn screen real estate)
   FEAT-8  — milestone callouts on home page  (DERIV-5 done)
   DERIV-7 — extend weekly digest job to all 30 teams (blocks FEAT-9)
   FEAT-9  — weekly digest card on team page  (blocked by DERIV-7)
   FEAT-12 — recap inline player hyperlinks
-  FEAT-13 — injury / transactions ribbon     (PIPE-2 done)
+  FEAT-13 — ABANDONED 2026-04-28 (transactions feed didn't earn screen real estate)
   FEAT-18 — trajectory window zoom
   (FEAT-11 already shipped; FEAT-16 deferred for scope; FEAT-17
    already done in Wave 1)
@@ -2673,7 +2792,6 @@ After derivations, these light up:
 - FEAT-6 (SoS tooltip) — needs DERIV-3
 - FEAT-7 (clutch leaders) — needs DERIV-4
 - FEAT-8 (milestones) — needs DERIV-5
-- FEAT-13 (transactions ribbon) — needs PIPE-2
 
 Also parallel-safe (each hits a different route + component).
 
