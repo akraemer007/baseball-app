@@ -22,7 +22,7 @@ worktree. The brainstorm archive lives at `make_it_impressive.md`.
 
 ---
 
-## Progress (last updated 2026-04-27)
+## Progress (last updated 2026-04-28)
 
 | Wave | Tickets | Status |
 |------|---------|--------|
@@ -38,11 +38,18 @@ Other status:
 - **FEAT-16** (team roster view) — deferred placeholder pending scope.
 - **PIPE-4** (sportsbook odds) — optional, skipped per backlog.
 
-**Cleanup pile (`tasks/post_wave3_cleanup.md`):** parallelize ingest
-in hourly job · move recap generation hourly + kill morning_recaps ·
-extend backfill.py to cover playByPlay/Statcast/transactions ·
-debug 2 missing team abbrevs in `gold_team_expected_stats`. To be
-folded in opportunistically alongside Wave 4/5.
+**Cleanup pile (`tasks/post_wave3_cleanup.md`):**
+✅ ingest tasks parallelized (all 4 from zero, commit `794dda4`) ·
+✅ recap generation moved hourly + morning_recaps retired (`9c639f2`) ·
+✅ team-abbrev aliases column on `silver_team` (`e02da83`) ·
+⏭️ extend backfill.py to cover playByPlay/Statcast/transactions
+(deferred until a redeploy is actually planned).
+
+**Hourly pipeline tuning (post-Wave-3):**
+- `build_gold` now depends on `refine_silver` again (`490186d`) — gold
+  reads current-hour silver, not previous-hour.
+- Statcast hourly only re-fetches the trailing 14 days (`ae34f8c`):
+  3 windows refreshed per run instead of 9. Older windows are frozen.
 
 **Known data caveats:**
 - `gold_weekly_digest` table exists (DERIV-6) but is empty until

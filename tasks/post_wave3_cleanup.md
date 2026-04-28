@@ -63,7 +63,11 @@
   bundling into a single one-shot backfill_all.py later.
 
 **Open follow-up worth tracking:**
-- ingest_playbyplay can also run parallel to refine_silver if
-  fetch_playbyplay.py reads bronze_schedule (which has the same
-  status info) instead of silver_game. ~30 min refactor, optional
-  pipeline-portability win.
+- ✅ ingest_playbyplay now fully parallel — calls MLB Stats API
+  schedule endpoint directly (no silver_game dep). Commits `e0e5220`
+  + `794dda4`. All 4 ingest tasks now run from zero in parallel.
+- ✅ Statcast hourly fetch trimmed to trailing 14 days only (commit
+  `ae34f8c`). Old code re-fetched all 9 weekly windows every hour;
+  new code re-fetches the 3 windows whose end date is within 14 days
+  (covers Savant's ~4-day publication lag). Verified by `fetched_at_utc`
+  inspection — older windows haven't been touched since 04-27 20:04 UTC.
