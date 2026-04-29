@@ -30,16 +30,22 @@ function lastName(full: string): string {
   return parts.length > 1 ? parts.slice(1).join(' ') : parts[0];
 }
 
-/** Adapt a pitcher distribution into the team-shaped entries the existing
- *  StatDistributionChart consumes. Each "team" is actually one pitcher;
- *  the team color is preserved so the dot still pops in team palette.
+/** Adapt a pitcher distribution into the team-shaped entries the
+ *  StatDistributionChart consumes. Each "team" is actually one pitcher.
+ *
+ *  `teamAbbrev` carries the pitcherId so it stays unique across the
+ *  league — two pitchers named Ashcraft would otherwise collide on key
+ *  and both light up under one spotlight. `displayLabel` provides the
+ *  visible last-name on the spotlight dot.
+ *
  *  `entryHref` opts each dot into Savant click-through, overriding the
  *  chart's default team-page navigation. */
 function pitcherEntriesAsTeamEntries(
   entries: PitcherDistributionEntry[],
 ): StatDistributionEntry[] {
   return entries.map((e) => ({
-    teamAbbrev: lastName(e.pitcherName),
+    teamAbbrev: e.pitcherId,
+    displayLabel: lastName(e.pitcherName),
     teamName: `${e.pitcherName} (${e.teamAbbrev})`,
     teamColor: e.teamColor,
     value: e.value,
@@ -48,16 +54,13 @@ function pitcherEntriesAsTeamEntries(
   }));
 }
 
-/** Find the spotlight pitcher's "abbrev" label so the chart highlights the
- *  right dot. Returns last name to match the synthetic entries above. */
+/** The spotlight match is now keyed by pitcherId since `teamAbbrev` on
+ *  each chart entry carries the pitcherId. */
 function spotlightLabel(
-  data: MatchupResponse,
+  _data: MatchupResponse,
   pitcherId: string | undefined,
 ): string | undefined {
-  if (!pitcherId) return undefined;
-  const dist = data.pitcherLeague.era.entries;
-  const found = dist.find((e) => e.pitcherId === pitcherId);
-  return found ? lastName(found.pitcherName) : undefined;
+  return pitcherId ?? undefined;
 }
 
 export default function MatchupPanel({ game, onClose }: Props) {

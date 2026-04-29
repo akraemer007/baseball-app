@@ -328,7 +328,7 @@ export function StatDistributionChart({
                     opacity={showLabel ? 1 : 0}
                     style={{ pointerEvents: 'none' }}
                   >
-                    {e.teamAbbrev}
+                    {e.displayLabel ?? e.teamAbbrev}
                   </text>
                 </g>
               );
@@ -379,7 +379,7 @@ export function StatDistributionChart({
             className="mono"
             style={{ color: hoveredEntry.teamColor, fontWeight: 700 }}
           >
-            {hoveredEntry.teamAbbrev}
+            {hoveredEntry.displayLabel ?? hoveredEntry.teamAbbrev}
           </div>
           <div>{hoveredEntry.teamName}</div>
           <div className="muted mono" style={{ fontSize: '0.7rem' }}>

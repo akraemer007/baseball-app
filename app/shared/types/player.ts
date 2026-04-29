@@ -59,11 +59,19 @@ export interface PlayerResponse {
 }
 
 export interface StatDistributionEntry {
+  /** Unique identifier for React keys + currentTeamAbbrev spotlight
+   *  matching. Team-level charts use the team abbreviation; per-pitcher
+   *  charts (FEAT-1 matchup) use the pitcherId so two pitchers with the
+   *  same last name don't collide on key. */
   teamAbbrev: string;
   teamName: string;
   teamColor: string;
   value: number;
   rank: number;
+  /** Override for the visible dot label (e.g. show "Ashcraft" while
+   *  `teamAbbrev` carries the pitcherId for uniqueness). When unset
+   *  the chart renders `teamAbbrev` directly. */
+  displayLabel?: string;
   /** Optional click target: when set, the chart opens this URL on dot
    *  click instead of navigating to the team page. Used by FEAT-1's
    *  pitcher spark plots so the dot links to Savant. */
