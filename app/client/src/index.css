@@ -371,9 +371,15 @@ table.stat-table td.top-performer {
   position: absolute;
   z-index: 12;
   top: 100%;
-  left: 100px; /* line up with the text column, not the spark */
+  /* Anchor to the row's right edge — the tooltip extends to the left
+     and stays inside the card no matter which grid column the card
+     sits in. Previous left:100px form spilled off the page on
+     AL West / NL West cards (rightmost column). */
+  right: 0;
+  left: auto;
   margin-top: 4px;
   width: 320px;
+  max-width: 100%;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
