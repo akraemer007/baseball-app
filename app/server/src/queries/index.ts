@@ -20,6 +20,7 @@ import type {
   TeamMilestonesResponse,
   TeamPlayerDistributionResponse,
   TeamResponse,
+  TeamStorylineResponse,
 } from '../../../shared/types/index.js';
 import { query } from '../lib/warehouse.js';
 
@@ -948,6 +949,172 @@ export async function getTeamMilestonesFromWarehouse(
       happenedOn: r.happened_on,
     })),
   };
+}
+
+// ---- /api/team/:teamId/storylines ------------------------------------------
+
+interface TeamStorylineRow {
+  generated_for_date: string;
+  bullet_index: number;
+  bullet_text: string;
+  title: string | null;
+}
+
+/**
+ * Pull this team's most-recent storyline bullets from
+ * `gold_team_storyline` (DERIV-11).
+ *
+ * The job runs hourly and is gated on (team_id, generated_for_date) so
+ * a team's bullets are atomic for a given day. We pick the single
+ * most-recent date that has rows for this team, and return that day's
+ * bullets in `bullet_index` order.
+ *
+ * Stale-cap: if `MAX(generated_for_date)` is more than 3 days old, the
+ * LLM job is presumed broken and we return an empty payload — better a
+ * blank section than week-old "today's take" copy.
+ */
+export async function getStorylinesForTeamFromWarehouse(
+  teamAbbrev: string,
+): Promise<TeamStorylineResponse> {
+  const safeAbbrev = teamAbbrev.toUpperCase().replace(/[^A-Z]/g, '');
+
+  const rows = await query<TeamStorylineRow>(
+    `WITH team_row AS (
+       SELECT team_id FROM silver_team WHERE abbrev = '${safeAbbrev}'
+     ),
+     latest AS (
+       SELECT MAX(generated_for_date) AS d
+         FROM gold_team_storyline s
+         JOIN team_row t ON t.team_id = s.team_id
+     )
+     SELECT CAST(s.generated_for_date AS STRING) AS generated_for_date,
+            s.bullet_index,
+            s.bullet_text,
+            s.title
+       FROM gold_team_storyline s
+       JOIN team_row t ON t.team_id = s.team_id
+       JOIN latest    l ON l.d       = s.generated_for_date
+      WHERE l.d IS NOT NULL
+        AND CAST(l.d AS DATE) >= current_date() - INTERVAL '3' DAY
+      ORDER BY s.bullet_index`,
+  );
+
+  if (rows.length === 0) {
+    return { generatedForDate: '', title: '', bullets: [] };
+  }
+
+  const players = await fetchTeamRosterPlayers(safeAbbrev);
+  const title = (rows[0].title || '').trim() || 'Two-week summary';
+
+  return {
+    generatedForDate: rows[0].generated_for_date,
+    title,
+    bullets: rows.map((r) => ({ text: r.bullet_text })),
+    ...(Object.keys(players).length > 0 ? { players } : {}),
+  };
+}
+
+interface TeamRosterPlayerRow {
+  player_id: number;
+  player_name: string;
+}
+
+/** Build a `playerName → playerId` map of the team's last-30-days
+ *  roster for client-side mention-linking on storyline bullets. The
+ *  storyline's payload window is 14 days; 30 buys some buffer for
+ *  milestone-driven mentions of players who were inactive recently.
+ *
+ *  Decorative — wrapped in try/catch. Failure here returns `{}`; the
+ *  bullets still render fine, just without inline links. */
+async function fetchTeamRosterPlayers(
+  safeAbbrev: string,
+): Promise<Record<string, string>> {
+  try {
+    const playerRows = await query<TeamRosterPlayerRow>(
+      `WITH team_row AS (
+         SELECT team_id FROM silver_team WHERE abbrev = '${safeAbbrev}'
+       )
+       SELECT player_id, player_name
+         FROM silver_player_game_batting b
+         JOIN team_row t ON t.team_id = b.team_id
+        WHERE b.game_date >= current_date() - INTERVAL '30' DAY
+          AND b.player_name IS NOT NULL
+        UNION
+       SELECT player_id, player_name
+         FROM silver_player_game_pitching p
+         JOIN team_row t ON t.team_id = p.team_id
+        WHERE p.game_date >= current_date() - INTERVAL '30' DAY
+          AND p.player_name IS NOT NULL`,
+    );
+    const map: Record<string, string> = {};
+    for (const r of playerRows) {
+      map[r.player_name] = String(r.player_id);
+    }
+    return map;
+  } catch (err) {
+    console.warn(
+      '[fetchTeamRosterPlayers] failed; storyline links will be omitted:',
+      err,
+    );
+    return {};
+  }
+}
+
+// ---- /api/league/storylines (bulk) -----------------------------------------
+
+interface LeagueStorylineRow {
+  team_abbrev: string;
+  generated_for_date: string;
+  bullet_index: number;
+  bullet_text: string;
+  title: string | null;
+}
+
+/** All 30 teams' most-recent storyline sets in one round trip — drives
+ *  the standings hover tooltip on the league page so we don't fire 30
+ *  /api/team/:abbrev/storylines requests when the user lands on the
+ *  page. Same 3-day staleness cap as the per-team endpoint.
+ *
+ *  Players (the FEAT-12-style mention map) are intentionally NOT
+ *  included. The tooltip is a hover preview, not a click target —
+ *  inline links there would compete for the click and the hover would
+ *  steal focus. Bullets render as plain text. */
+export async function getLeagueStorylinesFromWarehouse(): Promise<
+  Record<string, { generatedForDate: string; title: string; bullets: { text: string }[] }>
+> {
+  const rows = await query<LeagueStorylineRow>(
+    `WITH latest_per_team AS (
+       SELECT team_id, MAX(generated_for_date) AS d
+         FROM gold_team_storyline
+        GROUP BY team_id
+     )
+     SELECT t.abbrev                              AS team_abbrev,
+            CAST(s.generated_for_date AS STRING)  AS generated_for_date,
+            s.bullet_index,
+            s.bullet_text,
+            s.title
+       FROM gold_team_storyline s
+       JOIN latest_per_team l
+         ON l.team_id = s.team_id
+        AND l.d       = s.generated_for_date
+       JOIN silver_team t ON t.team_id = s.team_id
+      WHERE CAST(l.d AS DATE) >= current_date() - INTERVAL '3' DAY
+      ORDER BY t.abbrev, s.bullet_index`,
+  );
+
+  const out: Record<string, { generatedForDate: string; title: string; bullets: { text: string }[] }> = {};
+  for (const r of rows) {
+    const abbrev = r.team_abbrev;
+    if (!out[abbrev]) {
+      out[abbrev] = {
+        generatedForDate: r.generated_for_date,
+        title: (r.title || '').trim() || 'Two-week summary',
+        bullets: [],
+      };
+    }
+    out[abbrev].bullets.push({ text: r.bullet_text });
+  }
+  return out;
 }
 
 // ---- /api/player/:playerId -------------------------------------------------

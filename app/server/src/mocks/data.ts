@@ -12,6 +12,7 @@ import type {
   RecapsResponse,
   TeamMilestonesResponse,
   TeamResponse,
+  TeamStorylineResponse,
   TeamTrajectory,
 } from '../../../shared/types/index.js';
 
@@ -305,6 +306,17 @@ export function getTeamMilestones(teamId: string): TeamMilestonesResponse {
       },
     ],
   };
+}
+
+/**
+ * Mock storyline bullets (FEAT-30 / DERIV-11). Local dev without
+ * `useRealSql` doesn't have the LLM job to lean on, so we ship a
+ * sentinel empty payload — the section renders nothing, exercising
+ * the "no storylines yet" path the client must already handle in
+ * production for teams the hourly job hasn't reached.
+ */
+export function getTeamStorylines(_teamId: string): TeamStorylineResponse {
+  return { generatedForDate: '', title: '', bullets: [] };
 }
 
 export function getPlayer(playerId: string, season: number): PlayerResponse {

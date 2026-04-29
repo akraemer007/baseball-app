@@ -6,4 +6,5 @@ export * from './team';
 export * from './recap';
 export * from './projection';
 export * from './player';
+export * from './storyline';
 export * from './system';

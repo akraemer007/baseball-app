@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { config } from '../config.js';
-import { getTeam, getTeamMilestones } from '../mocks/data.js';
 import {
+  getTeam,
+  getTeamMilestones,
+  getTeamStorylines,
+} from '../mocks/data.js';
+import {
+  getStorylinesForTeamFromWarehouse,
   getTeamFromWarehouse,
   getTeamMilestonesFromWarehouse,
   getTeamPlayerStatDistributionFromWarehouse,
@@ -53,6 +58,23 @@ router.get('/:teamId/milestones', async (req, res, next) => {
     const payload = config.useRealSql
       ? await getTeamMilestonesFromWarehouse(teamId)
       : getTeamMilestones(teamId);
+    res.json(payload);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/team/:teamId/storylines
+// FEAT-30: latest storyline bullets from gold_team_storyline (DERIV-11).
+// Returns the most-recent generated_for_date's bullets in bullet_index
+// order; empty array when no rows or the latest date is >3 days stale.
+// Registered before `/:teamId` so the more-specific path matches first.
+router.get('/:teamId/storylines', async (req, res, next) => {
+  try {
+    const teamId = req.params.teamId;
+    const payload = config.useRealSql
+      ? await getStorylinesForTeamFromWarehouse(teamId)
+      : getTeamStorylines(teamId);
     res.json(payload);
   } catch (err) {
     next(err);

@@ -45,8 +45,9 @@ only_teams_param = dbutils.widgets.get("only_teams").strip()
 dry_run = dbutils.widgets.get("dry_run").lower() == "true"
 fq = f"{catalog}.{schema}"
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 MODEL_VERSION = f"{endpoint}:{PROMPT_VERSION}"
+TITLE_FALLBACK = "Two-week summary"
 
 # Lookback windows (calendar days, ending on target_date inclusive)
 TEAM_DAY_LOOKBACK = 14
@@ -105,7 +106,9 @@ team_meta_df = spark.sql(f"""
 print(f"team_meta resolved: {len(team_meta_df)} team(s)")
 
 # Make sure gold_team_storyline exists before we query it for the gate.
-# Schema mirrors BACKLOG.md DERIV-11 spec.
+# Schema mirrors BACKLOG.md DERIV-11 spec, plus a `title` column added in
+# prompt v2 (FEAT-30 polish): one short headline per (team, date) that
+# replaces the static "Two-week summary" header on the team page.
 spark.sql(f"""
     CREATE TABLE IF NOT EXISTS {fq}.gold_team_storyline (
         team_id                  BIGINT,
@@ -113,9 +116,19 @@ spark.sql(f"""
         bullet_index             INT,
         bullet_text              STRING,
         supporting_metrics_json  STRING,
-        generated_at             TIMESTAMP
+        generated_at             TIMESTAMP,
+        title                    STRING
     ) USING DELTA
 """)
+# Idempotent ALTER for tables created before v2; Delta no-ops if the
+# column already exists.
+try:
+    spark.sql(
+        f"ALTER TABLE {fq}.gold_team_storyline ADD COLUMNS (title STRING)"
+    )
+except Exception as exc:  # noqa: BLE001
+    if "already exists" not in str(exc).lower():
+        raise
 
 if not force:
     existing = spark.sql(f"""
@@ -358,7 +371,7 @@ for _, team_row in target_teams.iterrows():
 # MAGIC %md ## Writer LLM call (one per team)
 
 # COMMAND ----------
-PROMPT_PATH = Path(os.getcwd()) / "prompts" / "team_storyline_v1.md"
+PROMPT_PATH = Path(os.getcwd()) / "prompts" / "team_storyline_v2.md"
 system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
 
 
@@ -412,6 +425,20 @@ def normalize_bullets(parsed: dict) -> list[dict]:
     return out[:5]
 
 
+def normalize_title(parsed: dict) -> str:
+    """Extract the LLM's title. Strip wrapping quotes, trailing
+    punctuation. Cap at 80 chars. Fall back to TITLE_FALLBACK on
+    missing/empty/too-long input — better a generic header than a 200-
+    char run-on sentence."""
+    raw = (parsed.get("title") or "").strip()
+    if not raw:
+        return TITLE_FALLBACK
+    raw = raw.strip("\"'`“”‘’ ").rstrip(".!?")
+    if len(raw) > 80 or len(raw) < 4:
+        return TITLE_FALLBACK
+    return raw
+
+
 storyline_rows: list[dict] = []
 failures: list[tuple[str, str]] = []
 total_in_tok = 0
@@ -433,6 +460,7 @@ for team_id, abbrev, payload in payloads:
         total_in_tok += usage["input_tokens"]
         total_out_tok += usage["output_tokens"]
         bullets = normalize_bullets(parsed)
+        title = normalize_title(parsed)
         if not bullets:
             failures.append((abbrev, "writer returned 0 bullets"))
             print(f"  {abbrev}: 0 bullets — skipping")
@@ -447,8 +475,9 @@ for team_id, abbrev, payload in payloads:
                     {"metric_ref": b["metric_ref"]}
                 ),
                 "generated_at": generated_at,
+                "title": title,
             })
-        print(f"  {abbrev}: {len(bullets)} bullets")
+        print(f"  {abbrev}: {len(bullets)} bullets — {title!r}")
     except Exception as exc:  # noqa: BLE001
         failures.append((abbrev, f"{type(exc).__name__}: {exc}"))
         print(f"  {abbrev} failed: {type(exc).__name__}: {exc}")
@@ -486,14 +515,15 @@ if storyline_rows:
     spark.sql(f"""
         INSERT INTO {fq}.gold_team_storyline
         (team_id, generated_for_date, bullet_index, bullet_text,
-         supporting_metrics_json, generated_at)
+         supporting_metrics_json, generated_at, title)
         SELECT
             CAST(team_id AS BIGINT),
             CAST(generated_for_date AS DATE),
             CAST(bullet_index AS INT),
             bullet_text,
             supporting_metrics_json,
-            generated_at
+            generated_at,
+            title
         FROM storyline_stage
     """)
     teams_written = len({r["team_id"] for r in storyline_rows})
@@ -542,6 +572,6 @@ if __name__ == "__main__":
             "rolling_batting_14d": [],
             "rolling_pitching_14d": [],
         }
-        prompt_path = Path(__file__).parent / "prompts" / "team_storyline_v1.md"
+        prompt_path = Path(__file__).parent / "prompts" / "team_storyline_v2.md"
         print("prompt bytes:", len(prompt_path.read_text()))
         print("payload json:", json.dumps(sample_payload))
