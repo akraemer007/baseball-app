@@ -30,8 +30,8 @@ worktree. The brainstorm archive lives at `make_it_impressive.md`.
 | 1 | ARCH-3, FEAT-2, FEAT-3, FEAT-10, FEAT-14, FEAT-15, FEAT-17 | ✅ |
 | 2 | PIPE-0.5, PIPE-1, PIPE-2, PIPE-3 | ✅ (PIPE-4 odds skipped) |
 | 3 | DERIV-1, DERIV-2, DERIV-3, DERIV-4, DERIV-5, DERIV-6 | ✅ |
-| 4 | FEAT-1, FEAT-4, FEAT-8 | ⏭️ in review (FEAT-5/6/7/13 abandoned) |
-| 5 | DERIV-7, DERIV-8, ARCH-2, ARCH-5, FEAT-9, FEAT-12, FEAT-18 | ⏭️ |
+| 4 | FEAT-1, FEAT-4 | ⏭️ in review (FEAT-5/6/7/13 abandoned, FEAT-8 rescoped → Wave 5) |
+| 5 | DERIV-7, DERIV-8, ARCH-2, ARCH-5, FEAT-8, FEAT-9, FEAT-12, FEAT-18, FEAT-19 | ⏭️ |
 
 Other status:
 - **FEAT-11** (recap interest chips) — already-shipped, closed.
@@ -55,6 +55,12 @@ Other status:
 - **FEAT-6** (strength of schedule tooltip) — abandoned 2026-04-28.
   Same reason as FEAT-5; SoS as a single-number-with-tooltip didn't
   earn the team-header real estate. `gold_team_sos` becomes orphaned.
+- **FEAT-8** (milestone callouts) — rescoped 2026-04-28 from a
+  league-page-with-primary-team strip to a per-team strip on every
+  team page. v1 worktree built and discarded; ticket body rewritten
+  in place. Moved from Wave 4 → Wave 5. DERIV-5 unchanged (also got
+  a v1.5 streak-counting fix in commit `03dbfcb`). New sibling ticket
+  **FEAT-19** surfaces the same milestones inline on recap cards.
 - **FEAT-13** (transactions section) — abandoned 2026-04-28 after a
   second pivot. v1 was inline ribbons on recap cards (built and
   discarded mid-review when scope was rethought), v2 was a standalone
@@ -1963,55 +1969,102 @@ see header postmortem.)
 
 ---
 
-### FEAT-8 — Milestone callouts on home page
+### FEAT-8 — Milestone callouts on team page (REWRITE)
 
 **Lane:** client + server
-**Status:** blocked by: DERIV-5 · **Blocks:** none
-**Scope:** Above the Today's Games card, a short narrative
-strip: "CHC won their 5th in a row — longest streak since 2017
-(8 games). Pete Crow-Armstrong hit his first career grand slam
-yesterday." Rotates through the most recent milestones. Max 3
-shown at once.
+**Status:** unblocked · **Blocks:** none
+**Scope:** A small strip of recent (last-7-days) DERIV-5 milestones
+specific to the team page being viewed: team winning streaks, the
+team's players' hitting streaks, and the team's players' multi-HR
+games. Replaces the original Wave-4 league-page-with-primary-team
+design after first impl revealed every team deserves its own
+milestone thread, not just the user's pinned team.
 
 **Acceptance criteria:**
 
-- New section at top of home page, above Today's Games.
-- Pulls last 7 days of milestone events, prioritized by:
-  (1) primary team involvement, (2) rarity (older "first since"),
-  (3) recency.
-- Max 3 items, each ~1 sentence.
-- Styling: card with light team-primary tint when about the
-  primary team.
+- Section mounted on `TeamPage`, below the trajectory chart and
+  above the stats card. Render as a proper section with an `<h2>
+  Milestones` header, matching the pattern used by "Today's Games"
+  / "League standings" elsewhere — not a tucked-in strip. NOT on
+  `LeaguePage`.
+- Server route `GET /api/team/:teamId/milestones` returns the team's
+  milestones for the last 7 days from `gold_milestone_events`.
+- Filter logic:
+  - For `subject_type='team'`: include if `subject_id = team_id`.
+  - For `subject_type='player'`: include if the player played for
+    this team on `happened_on` (lookup via
+    `silver_player_game_batting` keyed on player_id + game_date).
+- Sort: rarity (older `comparison_year` first; NULL → rarest) →
+  recency.
+- Top 3 displayed (default; tunable). Empty array → section silently
+  absent.
+- Player names rendered as Savant-linked text via the existing
+  `app/client/src/lib/savant.ts → savantPlayerUrl` helper.
+- Voice: Sans-serif body ~0.95rem, player name at font-weight 500,
+  3px team-color left border on every row. Pill tag on the far right
+  uses the existing recap-card chip pattern (`.pill.game-type-*` in
+  `app/client/src/index.css` ~line 1048): pastel background, dark
+  text. Add one new chip variant per milestone `event_kind`:
+    - `milestone-team-streak` — team_winning_streak
+    - `milestone-hit-streak` — player_hitting_streak
+    - `milestone-multi-hr` — player_multi_hr_game
+  Pick pastel colors from the same palette family as `walkoff` /
+  `comeback` / `pitching_duel` / `blowout`. If the px / weights /
+  paddings end up inconsistent with the other recap chips, stop and
+  tell me.
+
 
 **Files expected to change:**
 
-- MODIFY `app/server/src/queries/index.ts`
-- MODIFY `app/server/src/routes/league.ts`
-- NEW `app/client/src/components/MilestoneStrip.tsx`
-- MODIFY `app/client/src/pages/LeaguePage.tsx`
+- MODIFY `app/server/src/queries/index.ts` — new
+  `getTeamMilestonesFromWarehouse(teamAbbrev)`
+- MODIFY `app/server/src/routes/team.ts` — new GET /:teamId/milestones
+- MODIFY `app/server/src/mocks/data.ts`
+- NEW `app/client/src/components/TeamMilestones.tsx`
+- MODIFY `app/client/src/pages/TeamPage.tsx`
+- MODIFY `app/shared/types/team.ts`
 
 **Agent prompt:**
 
 ```
-You are in a git worktree branched off main, working on FEAT-8.
-DERIV-5 has landed; gold_milestone_events exists.
+You are in a worktree branched off main, working on FEAT-8.
+
+DERIV-5 already populates gold_milestone_events. The DERIV-5 v1.5
+fix (commit 03dbfcb) corrected the streak off-by-one and only emits
+alive peaks — trust the data.
 
 Steps:
-1. Server: GET /api/league/milestones → top 3 recent milestones,
-   sorted per the priority rule in BACKLOG.md.
-2. Client: MilestoneStrip.tsx — one row per milestone, each
-   rendering the event_text verbatim from gold_milestone_events.
-3. Primary team milestones get a subtle team-color left border
-   (existing pattern from recap cards).
+1. Server: getTeamMilestonesFromWarehouse(teamAbbrev) joins
+   gold_milestone_events to silver_player_game_batting (for
+   player→team resolution on the milestone day) and silver_team
+   (for primary_color). Filter to team_id, last 7 days, sort by
+   rarity (NULL comparison_year = rarest = -Infinity) then by
+   recency. Top 3.
+2. New route GET /api/team/:teamId/milestones using the existing
+   teamId resolution pattern in routes/team.ts.
+3. Client: TeamMilestones.tsx — up to 3 narrative cards. Each row's
+   player_name (when subject_type='player') wraps in <a href>
+   pointing at savantPlayerUrl(playerId). Hide the section entirely
+   when the response is empty. Component takes teamId + teamColor
+   as props.
+4. Mount on TeamPage as a section BELOW the trajectory chart and
+   ABOVE the stats card. Render with an `<h2>Milestones</h2>`
+   header — matches the section-header pattern used elsewhere on
+   the page. Not a tucked-in strip.
 
-Keep copy tight. No illustrations.
+No primary-team check — every row is this team.
 
-Commit clean.
+Add types to app/shared/types/team.ts. Verify cd app && npm run
+build clean. Commit clean.
 ```
 
-**Notes / risks:** Make sure 2020-season artifacts
-("first since 2020") are either suppressed or prefixed with
-"(short season)" — DERIV-5's commit noted this.
+**Notes / risks:** Originally Wave-4-on-League-page; rescoped
+2026-04-28 after first impl. Reuses DERIV-5 unchanged — pipeline
+work is zero. The current event_text strings include only the
+player_name as plain text; FEAT-8 wraps the rendered name in an <a>
+tag client-side via simple string-replace, since DERIV-5's text
+isn't structured. If string-replace becomes brittle, future ticket
+adds player_id placeholders to event_text.
 
 ---
 
@@ -2681,6 +2734,82 @@ consider materializing daily gold snapshots and interpolating.
 
 ---
 
+### FEAT-19 — Milestone enrichment on recap cards
+
+**Lane:** client + server
+**Status:** unblocked · **Blocks:** none
+**Scope:** When a recap card renders game G on date D between teams
+A and B, surface any DERIV-5 milestones tied to that date and
+either team. Inline within the recap card, italic dim text between
+headline and body — context the reader notices on the way to the
+prose, not a competing block.
+
+**Acceptance criteria:**
+
+- Recap response includes `relevantMilestones` — array of
+  `MilestoneEvent` objects where:
+    `happened_on = game.game_date`
+  AND
+    `team_id IN (game.away_team_id, game.home_team_id)`
+- Render inline within the recap card, between the headline row
+  (team-color stripe + UPSET pill) and the prose body. Italic,
+  dim color, ~0.78rem, same padding as existing recap content (no
+  nested card).
+- Player names in milestone text wrap in Savant links via
+  `savantPlayerUrl`.
+- Empty list (typical case): don't render anything. No header.
+- No pagination — naturally capped by gameflow.
+
+**Files expected to change:**
+
+- MODIFY `app/server/src/queries/index.ts` — augment recap fetch
+  with milestones join (`attachMilestones(recaps)` helper, mirror
+  of the abandoned `attachTransactions` pattern from FEAT-13 v1)
+- MODIFY `app/client/src/components/NewsSection.tsx` — render
+  milestone block inside recap card
+- MODIFY `app/client/src/index.css`
+- MODIFY `app/shared/types/recap.ts` — add
+  `relevantMilestones?: MilestoneEvent[]` to `RecapItem`
+
+**Agent prompt:**
+
+```
+You are in a worktree branched off main, working on FEAT-19.
+
+DERIV-5 already populates gold_milestone_events. FEAT-8 (rescoped
+to team page) is being shipped in parallel — coordinate types so
+both tickets share the same MilestoneEvent shape via
+app/shared/types/recap.ts (or wherever the type lives).
+
+Steps:
+1. Server: attachMilestones(recaps) — given a list of recap rows,
+   fetch milestones where happened_on = game_date AND team_id IN
+   (away, home). Resolve player→team via
+   silver_player_game_batting on happened_on, same as FEAT-8.
+   Wrap in try/catch — milestones are decorative, must never fail
+   the recap response.
+2. Client: NewsSection.tsx renders relevantMilestones inline in
+   each recap card, between the recap-head row and the recap-body
+   prose. Use existing recap-card padding. Italic, dim color
+   (var(--text-dim)), 0.78rem.
+3. Player names in event_text get Savant-linked via the same
+   string-replace pattern FEAT-8 uses (or share a helper).
+
+Don't worry about dedup against FEAT-8's team-page strip — same
+milestone showing on both surfaces is fine; they live on different
+pages.
+
+Verify build clean. Commit clean.
+```
+
+**Notes / risks:** Player team resolution can fail if the player
+didn't bat on milestone day (relievers, late defensive subs). Per
+the FEAT-8 review, `gold_milestone_events` currently only contains
+batter milestones — no pitcher events — so this is a theoretical
+concern, not a real one today.
+
+---
+
 ## Dependency map
 
 ```
@@ -2708,7 +2837,7 @@ Unblocked right now (post-Wave-3, 2026-04-27):
   FEAT-5  — ABANDONED 2026-04-28 (scope didn't earn its space)
   FEAT-6  — ABANDONED 2026-04-28 (scope didn't earn its space)
   FEAT-7  — ABANDONED 2026-04-28 (metric didn't earn screen real estate)
-  FEAT-8  — milestone callouts on home page  (DERIV-5 done)
+  FEAT-8  — milestone callouts on team page  (rescoped to Wave 5)
   DERIV-7 — extend weekly digest job to all 30 teams (blocks FEAT-9)
   FEAT-9  — weekly digest card on team page  (blocked by DERIV-7)
   FEAT-12 — recap inline player hyperlinks
@@ -2788,10 +2917,11 @@ table. They only write, don't read each other.
 After derivations, these light up:
 
 - FEAT-4 (xwOBA card) — needs DERIV-1
-- FEAT-5 (bullpen usage) — needs DERIV-2
-- FEAT-6 (SoS tooltip) — needs DERIV-3
-- FEAT-7 (clutch leaders) — needs DERIV-4
-- FEAT-8 (milestones) — needs DERIV-5
+- FEAT-5 (bullpen usage) — needs DERIV-2  [ABANDONED]
+- FEAT-6 (SoS tooltip) — needs DERIV-3    [ABANDONED]
+- FEAT-7 (clutch leaders) — needs DERIV-4 [ABANDONED]
+- FEAT-13 (transactions) — needs PIPE-2   [ABANDONED]
+- FEAT-8 + FEAT-19 (milestones) → moved to Wave 5
 
 Also parallel-safe (each hits a different route + component).
 
@@ -2800,7 +2930,11 @@ Also parallel-safe (each hits a different route + component).
 - DERIV-7 (per-team weekly digest pipeline) — must land before FEAT-9.
 - DERIV-8 (deprecate `gold_player_clutch`) — FEAT-7 cleanup. Quick
   pipeline-side change; can land first or last.
+- FEAT-8 (milestone callouts on team page, rewrite) — uses DERIV-5
+  unchanged.
 - FEAT-9 (weekly digest on team page) — needs DERIV-7.
+- FEAT-19 (milestone enrichment on recap cards) — uses DERIV-5
+  unchanged. Coordinates types with FEAT-8.
 - ARCH-5 (recap tests) — drop in at any point once pipeline is
   stable.
 - FEAT-12 (player hyperlinks) — can be done earlier; slot when
