@@ -316,7 +316,7 @@ export function getTeamMilestones(teamId: string): TeamMilestonesResponse {
  * production for teams the hourly job hasn't reached.
  */
 export function getTeamStorylines(_teamId: string): TeamStorylineResponse {
-  return { generatedForDate: '', bullets: [] };
+  return { generatedForDate: '', title: '', bullets: [] };
 }
 
 export function getPlayer(playerId: string, season: number): PlayerResponse {

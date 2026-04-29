@@ -61,13 +61,14 @@ export function TeamStorylines({ teamId }: Props) {
     return null;
   }
 
-  const { generatedForDate, bullets, players } = storylinesQ.data;
+  const { generatedForDate, title, bullets, players } = storylinesQ.data;
   const isStale = !!generatedForDate && generatedForDate < todayUtc();
+  const headerText = title?.trim() || 'Two-week summary';
 
   return (
     <>
       <h2 style={{ marginTop: '1.25rem', marginBottom: '0.5rem' }}>
-        Two-week summary
+        {headerText}
         {isStale && (
           <span className="team-storylines-dateline">
             {' · '}

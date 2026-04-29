@@ -957,6 +957,7 @@ interface TeamStorylineRow {
   generated_for_date: string;
   bullet_index: number;
   bullet_text: string;
+  title: string | null;
 }
 
 /**
@@ -988,7 +989,8 @@ export async function getStorylinesForTeamFromWarehouse(
      )
      SELECT CAST(s.generated_for_date AS STRING) AS generated_for_date,
             s.bullet_index,
-            s.bullet_text
+            s.bullet_text,
+            s.title
        FROM gold_team_storyline s
        JOIN team_row t ON t.team_id = s.team_id
        JOIN latest    l ON l.d       = s.generated_for_date
@@ -998,13 +1000,15 @@ export async function getStorylinesForTeamFromWarehouse(
   );
 
   if (rows.length === 0) {
-    return { generatedForDate: '', bullets: [] };
+    return { generatedForDate: '', title: '', bullets: [] };
   }
 
   const players = await fetchTeamRosterPlayers(safeAbbrev);
+  const title = (rows[0].title || '').trim() || 'Two-week summary';
 
   return {
     generatedForDate: rows[0].generated_for_date,
+    title,
     bullets: rows.map((r) => ({ text: r.bullet_text })),
     ...(Object.keys(players).length > 0 ? { players } : {}),
   };

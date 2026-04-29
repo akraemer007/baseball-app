@@ -14,6 +14,11 @@ export interface TeamStorylineBullet {
 
 export interface TeamStorylineResponse {
   generatedForDate: string;
+  /** LLM-generated section header (prompt v2). 4-7 words, recap-headline
+   *  voice. Falls back to the literal `Two-week summary` server-side
+   *  when missing — older rows generated under v1 simply don't have a
+   *  title column populated. */
+  title: string;
   bullets: TeamStorylineBullet[];
   /** Map of `playerName → playerId` for every player on this team's
    *  roster in the last 30 days. Mirrors `RecapItem.players` (FEAT-12)
