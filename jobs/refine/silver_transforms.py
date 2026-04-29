@@ -41,8 +41,20 @@ def parse_schedule_payloads(rows: Iterable) -> list[dict]:
                 probable = g.get("teams", {})
                 home_probable = (home.get("probablePitcher") or {}).get("id")
                 away_probable = (away.get("probablePitcher") or {}).get("id")
+                # MLB Stats API quirk: postponed/cancelled games carry
+                # `abstractGameState='Final'`, but no innings were played.
+                # We surface those non-played statuses as the silver
+                # `status` so every downstream `WHERE status='Final'`
+                # filter naturally skips them. `detailed_status` keeps
+                # the raw MLB string for UI display.
+                detailed = status.get("detailedState", "")
+                abstract = status.get("abstractGameState", "")
+                if abstract == "Final" and detailed in ("Postponed", "Cancelled"):
+                    status_value = detailed  # "Postponed" or "Cancelled"
+                else:
+                    status_value = abstract
                 winner_id = None
-                if status.get("abstractGameState") == "Final":
+                if status_value == "Final":
                     if home_score > away_score:
                         winner_id = home["team"]["id"]
                     elif away_score > home_score:
@@ -56,8 +68,8 @@ def parse_schedule_payloads(rows: Iterable) -> list[dict]:
                     "game_datetime": g.get("gameDate"),
                     "season": int(g.get("season", game_date[:4])),
                     "game_type": g.get("gameType", ""),
-                    "status": status.get("abstractGameState", ""),
-                    "detailed_status": status.get("detailedState", ""),
+                    "status": status_value,
+                    "detailed_status": detailed,
                     "home_team_id": int(home["team"]["id"]),
                     "home_team_name": home["team"].get("name", ""),
                     "away_team_id": int(away["team"]["id"]),
