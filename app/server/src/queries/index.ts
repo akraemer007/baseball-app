@@ -20,6 +20,7 @@ import type {
   TeamMilestonesResponse,
   TeamPlayerDistributionResponse,
   TeamResponse,
+  TeamStorylineResponse,
 } from '../../../shared/types/index.js';
 import { query } from '../lib/warehouse.js';
 
@@ -947,6 +948,62 @@ export async function getTeamMilestonesFromWarehouse(
       comparisonYear: r.comparison_year,
       happenedOn: r.happened_on,
     })),
+  };
+}
+
+// ---- /api/team/:teamId/storylines ------------------------------------------
+
+interface TeamStorylineRow {
+  generated_for_date: string;
+  bullet_index: number;
+  bullet_text: string;
+}
+
+/**
+ * Pull this team's most-recent storyline bullets from
+ * `gold_team_storyline` (DERIV-11).
+ *
+ * The job runs hourly and is gated on (team_id, generated_for_date) so
+ * a team's bullets are atomic for a given day. We pick the single
+ * most-recent date that has rows for this team, and return that day's
+ * bullets in `bullet_index` order.
+ *
+ * Stale-cap: if `MAX(generated_for_date)` is more than 3 days old, the
+ * LLM job is presumed broken and we return an empty payload — better a
+ * blank section than week-old "today's take" copy.
+ */
+export async function getStorylinesForTeamFromWarehouse(
+  teamAbbrev: string,
+): Promise<TeamStorylineResponse> {
+  const safeAbbrev = teamAbbrev.toUpperCase().replace(/[^A-Z]/g, '');
+
+  const rows = await query<TeamStorylineRow>(
+    `WITH team_row AS (
+       SELECT team_id FROM silver_team WHERE abbrev = '${safeAbbrev}'
+     ),
+     latest AS (
+       SELECT MAX(generated_for_date) AS d
+         FROM gold_team_storyline s
+         JOIN team_row t ON t.team_id = s.team_id
+     )
+     SELECT CAST(s.generated_for_date AS STRING) AS generated_for_date,
+            s.bullet_index,
+            s.bullet_text
+       FROM gold_team_storyline s
+       JOIN team_row t ON t.team_id = s.team_id
+       JOIN latest    l ON l.d       = s.generated_for_date
+      WHERE l.d IS NOT NULL
+        AND CAST(l.d AS DATE) >= current_date() - INTERVAL '3' DAY
+      ORDER BY s.bullet_index`,
+  );
+
+  if (rows.length === 0) {
+    return { generatedForDate: '', bullets: [] };
+  }
+
+  return {
+    generatedForDate: rows[0].generated_for_date,
+    bullets: rows.map((r) => ({ text: r.bullet_text })),
   };
 }
 

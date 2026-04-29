@@ -22,6 +22,7 @@ import { TeamPlayerDistribution } from '../charts/TeamPlayerDistribution';
 import { GameDrawer } from '../components/GameDrawer';
 import { InfoTip } from '../components/InfoTip';
 import { TeamMilestones } from '../components/TeamMilestones';
+import { TeamStorylines } from '../components/TeamStorylines';
 import { formatStat, formatSlashStat } from '../lib/stats';
 
 /** Stats that are counting totals rather than rates. Team-level and
@@ -393,6 +394,8 @@ export default function TeamPage() {
           </>
         );
       })()}
+
+      <TeamStorylines teamId={team.id} />
 
       <TeamMilestones teamId={team.id} teamColor={team.color} />
 

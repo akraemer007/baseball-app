@@ -1495,3 +1495,26 @@ table.stat-table td.top-performer {
   transform: rotate(90deg);
   color: var(--text);
 }
+
+/* FEAT-30 — Storyline bullets on the team page. Quiet serif italic, no
+   chrome; the voice is the signal. Sits between the trajectory chart
+   and the percentile cards, so the spacing here is just enough to
+   breathe without inviting a card frame. No `--font-serif` var exists
+   in the codebase yet — match the inline serif stack used elsewhere
+   (e.g. recap dropcaps at line 511 / 1054). */
+.team-storylines {
+  margin: 1.25rem 0 0.5rem;
+}
+.team-storylines p {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  line-height: 1.45;
+  margin: 0.4rem 0;
+  color: var(--text);
+}
+.team-storylines .dateline {
+  color: var(--text-dim);
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
