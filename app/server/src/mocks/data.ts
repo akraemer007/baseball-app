@@ -8,6 +8,7 @@ import type {
   PlayerResponse,
   ProjectionsResponse,
   RecapsResponse,
+  TeamMilestonesResponse,
   TeamResponse,
   TeamTrajectory,
 } from '../../../shared/types/index.js';
@@ -245,6 +246,62 @@ export function getTeam(teamId: string, season: number): TeamResponse {
     percentileStats,
     recentGames,
     upcomingGames,
+  };
+}
+
+/**
+ * Mock milestone callouts. Returns a small canned set so local dev can
+ * see the section render without a warehouse round-trip. The user's
+ * primary team gets a richer payload; everyone else gets one row so
+ * the layout stays exercised.
+ */
+export function getTeamMilestones(teamId: string): TeamMilestonesResponse {
+  const team =
+    Object.values(TEAMS).find(
+      (t) => t.id.toUpperCase() === teamId.toUpperCase(),
+    ) || TEAMS.CHC;
+  const today = new Date();
+  const isoDay = (offset: number): string => {
+    const d = new Date(today);
+    d.setUTCDate(d.getUTCDate() - offset);
+    return d.toISOString().slice(0, 10);
+  };
+  return {
+    teamId: team.id,
+    milestones: [
+      {
+        subjectType: 'team',
+        subjectId: team.id,
+        subjectName: team.name,
+        eventKind: 'team_winning_streak',
+        eventText: `${team.name} won their 6th in a row — longest streak since 2022 (8 games).`,
+        streakLength: 6,
+        comparisonYear: 2022,
+        happenedOn: isoDay(1),
+      },
+      {
+        subjectType: 'player',
+        subjectId: '660271',
+        subjectName: 'Shohei Ohtani',
+        eventKind: 'player_hitting_streak',
+        eventText:
+          'Shohei Ohtani extended his hitting streak to 12 games — longest streak since 2023 (15 games).',
+        streakLength: 12,
+        comparisonYear: 2023,
+        happenedOn: isoDay(2),
+      },
+      {
+        subjectType: 'player',
+        subjectId: '592450',
+        subjectName: 'Aaron Judge',
+        eventKind: 'player_multi_hr_game',
+        eventText:
+          'Aaron Judge hit 3 HR in one game — first multi-HR game since 2024.',
+        streakLength: null,
+        comparisonYear: 2024,
+        happenedOn: isoDay(3),
+      },
+    ],
   };
 }
 

@@ -21,6 +21,7 @@ import { StatDistributionChart } from '../charts/StatDistributionChart';
 import { TeamPlayerDistribution } from '../charts/TeamPlayerDistribution';
 import { GameDrawer } from '../components/GameDrawer';
 import { InfoTip } from '../components/InfoTip';
+import { TeamMilestones } from '../components/TeamMilestones';
 import { formatStat, formatSlashStat } from '../lib/stats';
 
 /** Stats that are counting totals rather than rates. Team-level and
@@ -387,6 +388,9 @@ export default function TeamPage() {
         );
       })()}
 
+      <TeamMilestones teamId={team.id} teamColor={team.color} />
+
+      <h2 style={{ marginTop: '1.25rem', marginBottom: '0.5rem' }}>Stats</h2>
       {(['batting', 'pitching', 'fielding'] as const).map((cat) => {
         const rows = percentileStats
           .filter((s) => s.category === cat)
@@ -458,6 +462,7 @@ export default function TeamPage() {
         );
       })}
 
+      <h2 style={{ marginTop: '1.25rem', marginBottom: '0.5rem' }}>Games</h2>
       <div className="grid grid-2">
         <div className="card" data-help-anchor="last-10">
           <h3>Last 10</h3>

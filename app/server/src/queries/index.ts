@@ -11,11 +11,13 @@ import type {
   GameType,
   HrRaceResponse,
   LeagueResponse,
+  MilestoneEvent,
   PlayerResponse,
   ProjectionsResponse,
   RecapItem,
   RecapsResponse,
   StatDistributionResponse,
+  TeamMilestonesResponse,
   TeamPlayerDistributionResponse,
   TeamResponse,
 } from '../../../shared/types/index.js';
@@ -833,6 +835,94 @@ export async function getTeamFromWarehouse(
       probableHomePitcherName: g.home_probable_pitcher_name,
       probableAwayPitcherName: g.away_probable_pitcher_name,
       impliedHomeWinProb: g.home_win_prob ?? 0.5,
+    })),
+  };
+}
+
+// ---- /api/team/:teamId/milestones ------------------------------------------
+
+interface MilestoneRow {
+  subject_type: 'team' | 'player';
+  subject_id: number;
+  subject_name: string;
+  event_kind: MilestoneEvent['eventKind'];
+  event_text: string;
+  streak_length: number | null;
+  comparison_year: number | null;
+  happened_on: string;
+}
+
+/**
+ * Pull this team's last-7-days milestone callouts from
+ * `gold_milestone_events` (DERIV-5).
+ *
+ * Filtering:
+ *   - team_winning_streak rows: subject_id matches the team's id directly.
+ *   - player rows: only include if the player batted for THIS team on
+ *     `happened_on` — joined through `silver_player_game_batting`. A
+ *     traded player's prior-team streak therefore won't surface on the
+ *     new team's page.
+ *
+ * Sort: rarity first (NULL `comparison_year` → rarest, sorted as the
+ * smallest possible year via COALESCE to a sentinel), then most-recent
+ * first. Top 3.
+ */
+export async function getTeamMilestonesFromWarehouse(
+  teamAbbrev: string,
+): Promise<TeamMilestonesResponse> {
+  const safeAbbrev = teamAbbrev.toUpperCase().replace(/[^A-Z]/g, '');
+
+  const rows = await query<MilestoneRow>(
+    `WITH team_row AS (
+       SELECT team_id FROM silver_team WHERE abbrev = '${safeAbbrev}'
+     ),
+     team_milestones AS (
+       SELECT m.subject_type, m.subject_id, m.subject_name,
+              m.event_kind, m.event_text, m.streak_length,
+              m.comparison_year, m.happened_on
+         FROM gold_milestone_events m
+         JOIN team_row t ON t.team_id = m.subject_id
+        WHERE m.subject_type = 'team'
+          AND CAST(m.happened_on AS DATE) >= current_date() - INTERVAL '7' DAY
+     ),
+     player_milestones AS (
+       SELECT DISTINCT m.subject_type, m.subject_id, m.subject_name,
+              m.event_kind, m.event_text, m.streak_length,
+              m.comparison_year, m.happened_on
+         FROM gold_milestone_events m
+         JOIN silver_player_game_batting b
+           ON b.player_id = m.subject_id
+          AND CAST(b.game_date AS DATE) = CAST(m.happened_on AS DATE)
+         JOIN team_row t ON t.team_id = b.team_id
+        WHERE m.subject_type = 'player'
+          AND CAST(m.happened_on AS DATE) >= current_date() - INTERVAL '7' DAY
+     ),
+     unioned AS (
+       SELECT * FROM team_milestones
+       UNION ALL
+       SELECT * FROM player_milestones
+     )
+     SELECT subject_type, subject_id, subject_name, event_kind, event_text,
+            streak_length, comparison_year, happened_on
+       FROM unioned
+      -- NULL comparison_year = rarest (no prior comp). COALESCE to a sentinel
+      -- so it sorts smallest among ints; older prior_year next; recency last.
+      ORDER BY COALESCE(comparison_year, -2147483648) ASC,
+               happened_on DESC
+      LIMIT 3`,
+  );
+
+  return {
+    teamId: safeAbbrev,
+    milestones: rows.map((r) => ({
+      subjectType: r.subject_type,
+      subjectId: String(r.subject_id),
+      subjectName: r.subject_name,
+      eventKind: r.event_kind,
+      eventText: r.event_text,
+      streakLength: r.streak_length,
+      comparisonYear: r.comparison_year,
+      happenedOn: r.happened_on,
     })),
   };
 }

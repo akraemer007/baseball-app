@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { config } from '../config.js';
-import { getTeam } from '../mocks/data.js';
+import { getTeam, getTeamMilestones } from '../mocks/data.js';
 import {
   getTeamFromWarehouse,
+  getTeamMilestonesFromWarehouse,
   getTeamPlayerStatDistributionFromWarehouse,
 } from '../queries/index.js';
 
@@ -36,6 +37,22 @@ router.get('/:teamId/player-stat-distribution', async (req, res, next) => {
       res.status(404).json({ error: 'stat not supported at player grain' });
       return;
     }
+    res.json(payload);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/team/:teamId/milestones
+// Last-7-days milestone callouts (DERIV-5). Returns up to 3 events;
+// empty array → client hides the section. Registered before `/:teamId`
+// so the more-specific path matches first.
+router.get('/:teamId/milestones', async (req, res, next) => {
+  try {
+    const teamId = req.params.teamId;
+    const payload = config.useRealSql
+      ? await getTeamMilestonesFromWarehouse(teamId)
+      : getTeamMilestones(teamId);
     res.json(payload);
   } catch (err) {
     next(err);

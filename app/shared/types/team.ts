@@ -80,3 +80,43 @@ export interface TeamResponse {
   recentGames: GameSummary[];
   upcomingGames: ScheduledGame[];
 }
+
+/**
+ * One milestone callout sourced from `gold_milestone_events` (DERIV-5).
+ * Intentionally a light rename of the gold row — both the team page
+ * (FEAT-8) and the recap response shape (FEAT-19) consume the same
+ * structure, so the type lives here under the team domain.
+ *
+ * `eventText` is rendered as plain prose; for `subjectType === 'player'`
+ * the client splices the `subjectName` substring inside an <a> tag
+ * pointing at Savant via `playerId`. `comparisonYear` is the year of
+ * the prior comparable peak ("longest streak since YYYY"); NULL means
+ * this is the first such event in the recorded window (rarest).
+ */
+export interface MilestoneEvent {
+  subjectType: 'team' | 'player';
+  /** team_id for team rows, player_id for player rows. Stringified so
+   *  the client can drop it directly into URLs / link hrefs. */
+  subjectId: string;
+  subjectName: string;
+  /** Maps 1:1 with the three classifiers in build_gold.sql. */
+  eventKind:
+    | 'team_winning_streak'
+    | 'player_hitting_streak'
+    | 'player_multi_hr_game';
+  /** Pre-rendered narrative text from gold. Includes the subject name. */
+  eventText: string;
+  /** Streak length for streak events; null for multi-HR games. */
+  streakLength: number | null;
+  /** Year of the prior comparable peak; null = rarest (no prior found). */
+  comparisonYear: number | null;
+  /** YYYY-MM-DD the milestone happened on. */
+  happenedOn: string;
+}
+
+export interface TeamMilestonesResponse {
+  teamId: string;
+  /** Up to 3 events, sorted by rarity then recency. Empty array → caller
+   *  should hide the section entirely (no "no milestones" placeholder). */
+  milestones: MilestoneEvent[];
+}
