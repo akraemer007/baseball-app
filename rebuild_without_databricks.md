@@ -17,38 +17,71 @@ Goal: keep the same product (News page, League page, Team page, Elo-based projec
 
 The app already isolates warehouse access to `app/server/src/queries/index.ts`. That single file is what changes when storage changes. The client code and the SQL itself stay the same.
 
-## Rough load
+## Measured load
 
-- ~15 MLB games/day for ~6 months → ~2,700 games/season
-- Boxscore JSON ~100–300 KB per game → whole season bronze ≈ 1 GB
-- Parsed silver/gold is tiny (few MB)
-- Writes: one hourly refresh loop + one morning recap batch
-- Reads: just me, so RPS is essentially zero
+Actual on-disk size of the UC schema, sampled 2026-04-29 (Delta-compressed parquet):
 
-**You do not need a warehouse.** A single-digit-GB Postgres covers every query in this app with room to spare.
+| Layer | Size | Tables | % of total |
+| --- | --- | --- | --- |
+| Bronze (raw JSON payloads) | 349 MB | 5 | 96% |
+| Silver (typed/deduped) | 9 MB | 12 | 3% |
+| Gold (app-ready) | 4 MB | 13 | 1% |
+| **Total** | **~362 MB** | 30 | |
+
+Heaviest tables:
+- `bronze_boxscore` — 232 MB (~15 KB/row × 14,957 rows)
+- `bronze_playbyplay` — 84 MB (only 798 rows; backfill incomplete, expect another ~100–200 MB one-time hump once caught up)
+- `bronze_statcast` — 27 MB (one row = whole-season CSV, +3 MB/year)
+- everything else combined — ~19 MB
+
+Growth: ~50 MB/year of bronze at current cadence, plus the one-time playbyplay backfill catch-up.
+
+Workload: just me, RPS ≈ 0. Writes are one hourly refresh + one morning recap batch.
+
+**You do not need a warehouse.** Silver + gold combined are 13 MB and fit any Postgres free tier with infinite headroom. Bronze is the only sizing question — see "Two paths for bronze" below.
 
 ---
 
 ## Recommended stack
 
-**Fly.io + Neon + Cloudflare R2 + Anthropic API.** Three dashboards, all with generous free tiers, all solo-dev-friendly.
+**Fly.io for hosting + Neon for Postgres + Anthropic API for the LLM.** Those three are non-negotiable. The open question is where bronze JSON lives — see "Two paths for bronze" below.
 
 | Layer | Service | Cost |
 | --- | --- | --- |
-| App (Node + React) | Fly.io — 1 always-running or auto-stop Machine | $0–$3/mo |
+| App (Node + React) | Fly.io — auto-stop Machine | $0–$3/mo |
 | Cron jobs (ingest, silver, gold, elo, recaps) | Fly.io scheduled Machines | $0–$2/mo |
-| Silver/gold tables | Neon Postgres free tier (0.5 GB) | $0 |
-| Bronze JSON payloads | Cloudflare R2 (10 GB free, no egress fee) | $0 |
+| Silver/gold tables (~13 MB) | Neon Postgres free tier | $0 |
+| Bronze JSON payloads | **Path A:** Cloudflare R2 (10 GB free, no egress fee)<br>**Path B:** Neon `jsonb` columns | $0<br>$0 free / $19 paid |
 | DNS + SSL + CDN | Cloudflare | $0 |
 | Recap LLM | Anthropic API (Haiku 4.5) | ~$2.50/mo |
 | Domain (optional) | Namecheap | ~$1/mo amortized |
-| **Total** | | **~$5–$9/mo** |
+| **Total — Path A (bronze on R2)** | | **~$5–$9/mo** |
+| **Total — Path B-free (bronze in Neon free + TTL)** | | **~$5–$9/mo** |
+| **Total — Path B-paid (bronze in Neon paid)** | | **~$24–$28/mo** |
 
-### Why this stack
+### Two paths for bronze
+
+The choice depends on whether you want a long retention window for raw payloads. The measurements in "Measured load" above (362 MB total today, ~96% of it bronze, +50 MB/year) are what drives the decision.
+
+**Path A — Bronze on R2, silver/gold in Neon.** Recommended if you want to keep bronze forever.
+
+- Pros: free indefinitely up to 10 GB (200+ years of growth at current rate), isolates "raw payloads" from "queryable warehouse," cleanest blast radius if Neon ever has an issue.
+- Cons: one extra service (R2 account, S3-compatible SDK in the ingest jobs), one extra credential pair, ~30 lines more code in the ingest path.
+
+**Path B — Everything in Neon, bronze as `jsonb` columns.** Recommended if you'd happily throw away bronze older than 2–3 seasons (you can re-pull from MLB Stats API for free).
+
+Postgres `jsonb` with TOAST/LZ4 lands somewhere in the 300–500 MB range for the bronze we have today — right at Neon's free tier ceiling, with growth ~50 MB/year. Two sub-paths:
+
+- **B-free:** stay on Neon free, add a TTL cron that drops bronze rows older than ~24 months. Operationally simplest. Cost stays at ~$5/mo. Risk: if you skip the TTL or backfill historical seasons, you blow past the free tier.
+- **B-paid:** Neon Launch plan ($19/mo), keep bronze forever as `jsonb`. One driver, one secret, one backup story, point-in-time recovery for free. Worth it if you want zero ops overhead and don't mind ~$20/mo.
+
+If you're undecided, start on Path A. The migration prompts in this doc were written for it, R2 is free, and you can collapse to Path B later by `COPY`-ing bronze into Neon if you change your mind.
+
+### Why these picks
 
 - **Fly** auto-stops Machines when idle and pays by the second, so a quiet site costs pennies. One Fly account scales to however many other sleepy projects you build next. Per-app `fly.toml`, one `fly deploy` per change.
-- **Neon** free tier is enough for this workload indefinitely. Standard `pg` driver, real Postgres, scale-to-zero for idle.
-- **R2** has the single best storage deal for solo devs: no egress fees. 10 GB free. Bronze payloads never touch your app tier, only the ingest cron.
+- **Neon** free tier is enough for silver+gold indefinitely. Standard `pg` driver, real Postgres, scale-to-zero for idle.
+- **R2** (Path A) has the single best storage deal for solo devs: no egress fees. 10 GB free. Bronze payloads never touch your app tier, only the ingest cron.
 - **Cloudflare DNS** is free and pairs with R2 in one account. Point your domain at Fly; done.
 - **Anthropic direct API** drops ~$2.50/mo for ~15 recaps a day at Haiku prices.
 
@@ -72,8 +105,8 @@ These require a human with credit card / email confirmations. GenAI can't do the
    - (Existing GitHub account — no new signup)
 
 2. **Resource creation**
-   - Neon: create database, copy the connection string (starts with `postgresql://`)
-   - Cloudflare: create R2 bucket (e.g. `ak-baseball-bronze`), generate an R2 API token (Access Key ID + Secret)
+   - Neon: create database, copy the connection string (starts with `postgresql://`). On Path B-paid, upgrade to the Launch plan now.
+   - Cloudflare (Path A only): create R2 bucket (e.g. `ak-baseball-bronze`), generate an R2 API token (Access Key ID + Secret)
    - Cloudflare: move your domain's DNS to Cloudflare (optional but recommended)
    - Anthropic: generate an API key (`sk-ant-...`)
 
@@ -89,6 +122,7 @@ These require a human with credit card / email confirmations. GenAI can't do the
    ```
    fly secrets set DATABASE_URL="postgresql://..." -a ak-baseball
    fly secrets set ANTHROPIC_API_KEY="sk-ant-..." -a ak-baseball
+   # Path A only — skip on Path B
    fly secrets set R2_ACCESS_KEY_ID="..." -a ak-baseball
    fly secrets set R2_SECRET_ACCESS_KEY="..." -a ak-baseball
    fly secrets set R2_BUCKET="ak-baseball-bronze" -a ak-baseball
@@ -138,14 +172,17 @@ Keep the Databricks stack running. Build the Fly/Neon/R2 side in parallel on a n
 
 **Success criteria:** for a pinned (season, date), both the old Databricks-backed app and the new Neon-backed app return byte-identical JSON for every endpoint.
 
-### Phase 2 — Pipeline port (R2 + Neon, running locally)
+### Phase 2 — Pipeline port (Neon, plus R2 if Path A, running locally)
 
 **What AI does:**
-- Port `fetch_games.py` and friends to write bronze as gzipped NDJSON to R2.
-- Port `silver_transforms.py` to read R2 and write to Neon.
+- Port `fetch_games.py` and friends:
+  - **Path A:** write bronze as gzipped NDJSON to R2.
+  - **Path B:** write bronze as `jsonb` rows into Neon (`bronze_*` tables, one row per source payload).
+- Port `silver_transforms.py` to read bronze (R2 or Neon) and write silver to Neon.
 - Port `build_gold.sql` runner (SQL stays in a `.sql` file, executed via psycopg's `cursor.execute()`).
 - Port `compute_elo.py` to Neon reads/writes.
 - Port `generate_recaps.py`: swap the Databricks `WorkspaceClient().serving_endpoints.query` for `anthropic.Anthropic().messages.create`. Keep the prompt file, keep the interest scoring — only the transport changes.
+- **Path B-free only:** add a `prune_bronze.py` job that deletes bronze rows older than 24 months and runs weekly.
 
 **What you do:** run each stage locally once. Diff row counts against Databricks. Spot-check a recap or two.
 
