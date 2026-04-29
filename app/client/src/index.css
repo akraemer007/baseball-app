@@ -1496,25 +1496,33 @@ table.stat-table td.top-performer {
   color: var(--text);
 }
 
-/* FEAT-30 — Storyline bullets on the team page. Quiet serif italic, no
-   chrome; the voice is the signal. Sits between the trajectory chart
-   and the percentile cards, so the spacing here is just enough to
-   breathe without inviting a card frame. No `--font-serif` var exists
-   in the codebase yet — match the inline serif stack used elsewhere
-   (e.g. recap dropcaps at line 511 / 1054). */
+/* FEAT-30 — Storyline bullets on the team page. Mirrors `.recap-card`
+   chrome (bg, border, accent stripe, padding) so the columnist's take
+   reads as a sibling of the game-recap surface. Bullets stay italic
+   serif inside the card to differentiate commentary from straight
+   recap prose. */
 .team-storylines {
-  margin: 1.25rem 0 0.5rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.75rem 1.25rem;
 }
 .team-storylines p {
   font-family: Georgia, 'Times New Roman', serif;
   font-style: italic;
-  line-height: 1.45;
-  margin: 0.4rem 0;
+  line-height: 1.5;
+  margin: 0.5rem 0;
   color: var(--text);
 }
-.team-storylines .dateline {
+.team-storylines p:first-child { margin-top: 0; }
+.team-storylines p:last-child  { margin-bottom: 0; }
+
+/* Small mono dateline appended to the section header when the
+   storylines are from a prior day (LLM job hasn't refreshed yet). */
+.team-storylines-dateline {
   color: var(--text-dim);
-  font-style: normal;
   font-family: var(--mono);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
 }

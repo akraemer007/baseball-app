@@ -15,4 +15,10 @@ export interface TeamStorylineBullet {
 export interface TeamStorylineResponse {
   generatedForDate: string;
   bullets: TeamStorylineBullet[];
+  /** Map of `playerName → playerId` for every player on this team's
+   *  roster in the last 30 days. Mirrors `RecapItem.players` (FEAT-12)
+   *  so the client can reuse `renderRecapText` to wrap mentions in
+   *  Savant links. Empty/undefined when the lookup fails — bullets
+   *  still render as plain text either way. */
+  players?: Record<string, string>;
 }

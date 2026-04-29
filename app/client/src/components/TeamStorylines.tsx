@@ -1,19 +1,21 @@
 // FEAT-30 — Storylines block on the team page.
 //
-// Renders DERIV-11's `gold_team_storyline` bullets as a quiet
-// serif-italic section: no card border, no heading, no icon, no
-// loading ghost, no error UI. The voice is the signal; the chrome
-// stays out of the way. Sits between the trajectory chart and the
-// percentile / stat-card region in TeamPage.
+// Renders DERIV-11's `gold_team_storyline` bullets in a recap-card-
+// style frame under a "Two-week summary" section header — same
+// chrome (bg, border, accent stripe, padding) as a game recap, so
+// the columnist's take reads as a sibling of the recap surface.
+// Sits between the trajectory chart and the percentile / stat-card
+// region in TeamPage.
 //
 // Empty payload, error, or undefined data → render null (the section
-// disappears). When `generatedForDate` is older than today, prepend a
-// small dim "Apr 28 ·" dateline on the first bullet so the reader
-// knows the take isn't fresh. Server-side already caps staleness at 3
-// days; anything older than that comes back as an empty payload.
+// + card both disappear; no empty-state ghost). When
+// `generatedForDate` is older than today, the section header carries
+// a small dim "· Apr 28" dateline. Server-side already caps staleness
+// at 3 days; anything older comes back as an empty payload.
 
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
+import { renderRecapText } from '../lib/recapRenderer';
 import type { TeamStorylineResponse } from '@shared/types';
 
 interface Props {
@@ -59,19 +61,25 @@ export function TeamStorylines({ teamId }: Props) {
     return null;
   }
 
-  const { generatedForDate, bullets } = storylinesQ.data;
+  const { generatedForDate, bullets, players } = storylinesQ.data;
   const isStale = !!generatedForDate && generatedForDate < todayUtc();
 
   return (
-    <div className="team-storylines">
-      {bullets.map((b, i) => (
-        <p key={i}>
-          {isStale && i === 0 && (
-            <span className="dateline">{formatDateline(generatedForDate)} · </span>
-          )}
-          {b.text}
-        </p>
-      ))}
-    </div>
+    <>
+      <h2 style={{ marginTop: '1.25rem', marginBottom: '0.5rem' }}>
+        Two-week summary
+        {isStale && (
+          <span className="team-storylines-dateline">
+            {' · '}
+            {formatDateline(generatedForDate)}
+          </span>
+        )}
+      </h2>
+      <div className="team-storylines">
+        {bullets.map((b, i) => (
+          <p key={i}>{renderRecapText(b.text, players)}</p>
+        ))}
+      </div>
+    </>
   );
 }

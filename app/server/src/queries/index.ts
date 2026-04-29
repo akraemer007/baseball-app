@@ -1001,10 +1001,59 @@ export async function getStorylinesForTeamFromWarehouse(
     return { generatedForDate: '', bullets: [] };
   }
 
+  const players = await fetchTeamRosterPlayers(safeAbbrev);
+
   return {
     generatedForDate: rows[0].generated_for_date,
     bullets: rows.map((r) => ({ text: r.bullet_text })),
+    ...(Object.keys(players).length > 0 ? { players } : {}),
   };
+}
+
+interface TeamRosterPlayerRow {
+  player_id: number;
+  player_name: string;
+}
+
+/** Build a `playerName → playerId` map of the team's last-30-days
+ *  roster for client-side mention-linking on storyline bullets. The
+ *  storyline's payload window is 14 days; 30 buys some buffer for
+ *  milestone-driven mentions of players who were inactive recently.
+ *
+ *  Decorative — wrapped in try/catch. Failure here returns `{}`; the
+ *  bullets still render fine, just without inline links. */
+async function fetchTeamRosterPlayers(
+  safeAbbrev: string,
+): Promise<Record<string, string>> {
+  try {
+    const playerRows = await query<TeamRosterPlayerRow>(
+      `WITH team_row AS (
+         SELECT team_id FROM silver_team WHERE abbrev = '${safeAbbrev}'
+       )
+       SELECT player_id, player_name
+         FROM silver_player_game_batting b
+         JOIN team_row t ON t.team_id = b.team_id
+        WHERE b.game_date >= current_date() - INTERVAL '30' DAY
+          AND b.player_name IS NOT NULL
+        UNION
+       SELECT player_id, player_name
+         FROM silver_player_game_pitching p
+         JOIN team_row t ON t.team_id = p.team_id
+        WHERE p.game_date >= current_date() - INTERVAL '30' DAY
+          AND p.player_name IS NOT NULL`,
+    );
+    const map: Record<string, string> = {};
+    for (const r of playerRows) {
+      map[r.player_name] = String(r.player_id);
+    }
+    return map;
+  } catch (err) {
+    console.warn(
+      '[fetchTeamRosterPlayers] failed; storyline links will be omitted:',
+      err,
+    );
+    return {};
+  }
 }
 
 // ---- /api/player/:playerId -------------------------------------------------
