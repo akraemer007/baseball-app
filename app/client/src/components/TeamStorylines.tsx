@@ -1,17 +1,17 @@
 // FEAT-30 — Storylines block on the team page.
 //
-// Renders DERIV-11's `gold_team_storyline` bullets in a recap-card-
-// style frame under a "Two-week summary" section header — same
-// chrome (bg, border, accent stripe, padding) as a game recap, so
-// the columnist's take reads as a sibling of the recap surface.
-// Sits between the trajectory chart and the percentile / stat-card
-// region in TeamPage.
+// Renders DERIV-11's `gold_team_storyline` bullets inside a `.card`
+// frame styled to match TeamMilestones: 3px team-color left border,
+// page-level primary-team tint inherited via --primary-team-accent-rgb,
+// system-sans typography. The LLM-generated `title` takes the bold
+// "headline" slot (where milestones bold the player name); the bullets
+// stack underneath as the dim body. Section h2 stays static at
+// "Two-week summary" + an optional dim "· Apr 28" dateline when the
+// LLM job hasn't refreshed today's set.
 //
 // Empty payload, error, or undefined data → render null (the section
-// + card both disappear; no empty-state ghost). When
-// `generatedForDate` is older than today, the section header carries
-// a small dim "· Apr 28" dateline. Server-side already caps staleness
-// at 3 days; anything older comes back as an empty payload.
+// + card both disappear). Server-side already caps staleness at 3
+// days; anything older comes back as an empty payload.
 
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
@@ -20,6 +20,10 @@ import type { TeamStorylineResponse } from '@shared/types';
 
 interface Props {
   teamId: string;
+  /** The team's primary_color hex; drives the 3px left border. Mirrors
+   *  TeamMilestones' teamColor prop so the two sections sit visually
+   *  on the same accent edge. */
+  teamColor: string;
 }
 
 /** Today as yyyy-mm-dd in UTC. We compare on the calendar-day grain
@@ -44,7 +48,7 @@ function formatDateline(iso: string): string {
   return month ? `${month} ${day}` : iso;
 }
 
-export function TeamStorylines({ teamId }: Props) {
+export function TeamStorylines({ teamId, teamColor }: Props) {
   const storylinesQ = useQuery<TeamStorylineResponse>({
     queryKey: ['team-storylines', teamId],
     queryFn: () =>
@@ -63,12 +67,12 @@ export function TeamStorylines({ teamId }: Props) {
 
   const { generatedForDate, title, bullets, players } = storylinesQ.data;
   const isStale = !!generatedForDate && generatedForDate < todayUtc();
-  const headerText = title?.trim() || 'Two-week summary';
+  const headlineText = title?.trim() || 'Two-week summary';
 
   return (
-    <>
+    <section>
       <h2 style={{ marginTop: '1.25rem', marginBottom: '0.5rem' }}>
-        {headerText}
+        Two-week summary
         {isStale && (
           <span className="team-storylines-dateline">
             {' · '}
@@ -76,11 +80,17 @@ export function TeamStorylines({ teamId }: Props) {
           </span>
         )}
       </h2>
-      <div className="team-storylines">
-        {bullets.map((b, i) => (
-          <p key={i}>{renderRecapText(b.text, players)}</p>
-        ))}
+      <div
+        className="card team-storylines"
+        style={{ borderLeft: `3px solid ${teamColor}` }}
+      >
+        <div className="team-storylines-headline">{headlineText}</div>
+        <ul className="team-storylines-bullets">
+          {bullets.map((b, i) => (
+            <li key={i}>{renderRecapText(b.text, players)}</li>
+          ))}
+        </ul>
       </div>
-    </>
+    </section>
   );
 }

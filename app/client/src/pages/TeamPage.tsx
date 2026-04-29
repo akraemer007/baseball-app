@@ -395,7 +395,7 @@ export default function TeamPage() {
         );
       })()}
 
-      <TeamStorylines teamId={team.id} />
+      <TeamStorylines teamId={team.id} teamColor={team.color} />
 
       <TeamMilestones teamId={team.id} teamColor={team.color} />
 
