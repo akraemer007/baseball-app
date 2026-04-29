@@ -4445,8 +4445,6 @@ Also parallel-safe (each hits a different route + component).
 ### Wave 5 — "the team-page digest"
 
 - DERIV-7 (per-team weekly digest pipeline) — must land before FEAT-9.
-- DERIV-8 (deprecate orphan gold tables) — FEAT-5/6/7 cleanup. Quick
-  pipeline-side change; agent prompt requires per-table user confirm.
 - FEAT-9 (weekly digest on team page) — needs DERIV-7.
 - FEAT-12 (player hyperlinks in recap text) — can be done anytime;
   slot when there's appetite.
@@ -4459,6 +4457,8 @@ FEAT-19 merged to main during Wave 4 review cycle.)
 Stubs added 2026-04-29; bodies are intentionally light, fill in when
 ready to dispatch.
 
+- DERIV-8 (deprecate orphan gold tables) — FEAT-5/6/7 cleanup. Quick
+  pipeline-side change; agent prompt requires per-table user confirm.
 - DERIV-9 (recap LLM enrichment with real-world news) — biggest of
   the bunch; ties to the long-running "scrape news for recap context"
   idea in `make_it_impressive.md`.
