@@ -363,9 +363,10 @@ table.stat-table td.top-performer {
 }
 
 /* Standings hover tooltip — shows the team's two-week storyline.
-   Pure CSS, mirrors the InfoTip pattern. Hidden by default; the
-   `.has-storyline` flag on the row gates rendering of the inner
-   element so empty teams don't reserve hover state. */
+   Visual style mirrors `.stat-dist-tooltip` (the trajectory chart's
+   tooltip): page-matching light background, subtle drop shadow,
+   dim-body text. Hidden by default; the `.has-storyline` flag on the
+   row gates the hover state so empty teams don't reserve it. */
 .standings-storyline-tip {
   position: absolute;
   z-index: 12;
@@ -373,15 +374,14 @@ table.stat-table td.top-performer {
   left: 100px; /* line up with the text column, not the spark */
   margin-top: 4px;
   width: 320px;
-  background: #0a1628;
-  color: #e8eef7;
-  border: 1px solid #0a1628;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 0.65rem 0.85rem;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-style: italic;
-  font-size: 0.8rem;
-  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(10, 22, 40, 0.15);
+  padding: 0.55rem 0.7rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
@@ -395,19 +395,17 @@ table.stat-table td.top-performer {
 }
 
 .standings-storyline-tip-title {
-  font-family: var(--sans, system-ui, sans-serif);
-  font-style: normal;
   font-weight: 600;
   font-size: 0.78rem;
-  color: #e8eef7;
-  letter-spacing: 0.01em;
-  margin-bottom: 0.4rem;
+  color: color-mix(in srgb, var(--text) 80%, var(--text-dim));
+  margin-bottom: 0.35rem;
   padding-bottom: 0.3rem;
-  border-bottom: 1px solid rgba(232, 238, 247, 0.18);
+  border-bottom: 1px solid var(--border);
 }
 
 .standings-storyline-tip p {
-  margin: 0.3rem 0;
+  margin: 0.25rem 0;
+  color: var(--text-dim);
 }
 .standings-storyline-tip p:first-of-type { margin-top: 0; }
 .standings-storyline-tip p:last-of-type  { margin-bottom: 0; }
