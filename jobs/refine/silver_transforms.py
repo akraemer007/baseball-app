@@ -50,6 +50,10 @@ def parse_schedule_payloads(rows: Iterable) -> list[dict]:
                 seen[pk] = {
                     "game_pk": pk,
                     "game_date": game_date,
+                    # First-pitch ISO timestamp (UTC) from MLB Stats API,
+                    # e.g. "2026-04-28T22:10:00Z". Null for the rare game
+                    # without a scheduled start. Client formats per-tz.
+                    "game_datetime": g.get("gameDate"),
                     "season": int(g.get("season", game_date[:4])),
                     "game_type": g.get("gameType", ""),
                     "status": status.get("abstractGameState", ""),

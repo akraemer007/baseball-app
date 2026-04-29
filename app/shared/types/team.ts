@@ -48,6 +48,9 @@ export interface GameSummary {
 export interface ScheduledGame {
   gameId: string;
   date: string;
+  /** First-pitch ISO timestamp (UTC), e.g. "2026-04-28T22:10:00Z".
+   *  Null when MLB hasn't published a start time. Client formats per-tz. */
+  gameDateTime?: string | null;
   homeTeamId: string;
   awayTeamId: string;
   /** MLBAM player id for the probable starter — for linking to Savant. */

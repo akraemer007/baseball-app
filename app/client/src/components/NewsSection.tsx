@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
 import { usePreferences } from '../lib/preferences';
@@ -8,6 +8,7 @@ import {
   savantPreviewUrl,
 } from '../lib/savant';
 import type { LeagueResponse, ProjectionsResponse, RecapsResponse } from '@shared/types';
+import MatchupPanel from './MatchupPanel';
 
 function formatGameType(t: string): string {
   switch (t) {
@@ -19,20 +20,21 @@ function formatGameType(t: string): string {
   }
 }
 
-function todayIsoEt(): string {
+function todayIsoCt(): string {
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
+    timeZone: 'America/Chicago',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
 }
 
-/** "Yesterday" in baseball-scoreboard terms (America/New_York), not UTC.
- *  At 9 PM ET on 4/23 a UTC-yesterday would report 4/23 — but the user
- *  considers today 4/23 and yesterday 4/22. */
+/** "Yesterday" anchored to Central Time. ET would roll over at 11 PM CT
+ *  (midnight ET) — too early for the user; tonight's just-finished
+ *  Pacific/late-CT games would already get bucketed into "tomorrow's
+ *  recaps". CT keeps tonight visible as today through midnight CT. */
 function yesterdayIso(): string {
-  return shiftIsoDate(todayIsoEt(), -1);
+  return shiftIsoDate(todayIsoCt(), -1);
 }
 
 /** Add `delta` days to a YYYY-MM-DD string. Parses the components
@@ -52,6 +54,9 @@ function shiftIsoDate(iso: string, delta: number): string {
 export default function NewsSection() {
   const season = new Date().getUTCFullYear();
   const [date, setDate] = useState(yesterdayIso());
+  // Inline matchup-preview expansion. At most one open at a time so the
+  // panel stays the focal point without competing with peer cards.
+  const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
   const { primaryTeam, secondaryTeam } = usePreferences();
 
   const recapsQ = useQuery<RecapsResponse>({
@@ -105,23 +110,26 @@ export default function NewsSection() {
     primaryDivisionAbbrevs.has(g.homeTeamId.toUpperCase()) ||
     primaryDivisionAbbrevs.has(g.awayTeamId.toUpperCase());
 
-  return (
-    <>
-      <h2 style={{ marginTop: '1.5rem' }}>Today's games</h2>
-      <div className="card" data-help-anchor="todays-games">
-        {projQ.isLoading && <p className="muted">Loading projections…</p>}
-        {projQ.data && projQ.data.games.length === 0 && (
-          <p className="muted">No games scheduled today.</p>
-        )}
-        {projQ.data && projQ.data.games.length > 0 && (
-          <div className="proj-grid">
-            {[...projQ.data.games]
-              .sort((a, b) => {
-                const aP = isPrimary(a) ? 2 : isSecondary(a) ? 1 : 0;
-                const bP = isPrimary(b) ? 2 : isSecondary(b) ? 1 : 0;
-                return bP - aP;
-              })
-              .map((g) => {
+  // Game start time in Central Time, e.g. "7:05 PM CT". Server sends
+  // `gameDateTime` as an ISO UTC string from MLB Stats API.
+  const fmtGameStartCt = (iso: string | null | undefined): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return (
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Chicago',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }).format(d) + ' CT'
+    );
+  };
+
+  // Card render extracted so we can call it from both Upcoming and
+  // Completed sub-grids without duplicating ~140 lines of JSX. Closes
+  // over the parent component's state and helpers.
+  const renderProjectionCard = (g: ProjectionsResponse['games'][number]) => {
                 const isFinal = g.status === 'Final';
                 const homeFav = g.impliedHomeWinProb > 0.5;
                 const favAbbrev = homeFav ? g.homeTeamId : g.awayTeamId;
@@ -149,10 +157,25 @@ export default function NewsSection() {
                 const matchupHref = isFinal
                   ? savantBoxScoreUrl(g.gameId)
                   : savantPreviewUrl(g.gameId, g.date);
+                const isExpanded = expandedGameId === g.gameId;
                 return (
+                  <Fragment key={g.gameId}>
                   <div
-                    key={g.gameId}
-                    className={`proj-card${p ? ' proj-card-primary' : s ? ' proj-card-secondary' : ''}${isFinal ? ' proj-card-final' : ''}`}
+                    className={`proj-card${p ? ' proj-card-primary' : s ? ' proj-card-secondary' : ''}${isFinal ? ' proj-card-final' : ''}${isExpanded ? ' proj-card-expanded' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isExpanded}
+                    onClick={() =>
+                      setExpandedGameId((prev) => (prev === g.gameId ? null : g.gameId))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setExpandedGameId((prev) =>
+                          prev === g.gameId ? null : g.gameId,
+                        );
+                      }
+                    }}
                     style={
                       p && primaryInfo
                         ? { borderLeft: `3px solid ${primaryInfo.color}` }
@@ -161,12 +184,19 @@ export default function NewsSection() {
                           : undefined
                     }
                   >
+                    <span
+                      className="proj-card-chevron"
+                      aria-hidden="true"
+                    >
+                      ▸
+                    </span>
                     <div className="proj-matchup mono">
                       <a
                         className="proj-matchup-link"
                         href={matchupHref}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         {isFinal && g.awayScore != null && g.homeScore != null ? (
                           <>
@@ -184,21 +214,9 @@ export default function NewsSection() {
                           </>
                         )}
                       </a>
-                      {isFinal && <span className="pill final-tag">FINAL</span>}
-                      {p && primaryInfo && (
-                        <span
-                          className="pill team-tag"
-                          style={{ marginLeft: '0.4rem', background: primaryInfo.color, color: '#fff' }}
-                        >
-                          {primaryTeam}
-                        </span>
-                      )}
-                      {s && secondaryInfo && (
-                        <span
-                          className="pill team-tag team-tag-secondary"
-                          style={{ marginLeft: '0.4rem', color: secondaryInfo.color }}
-                        >
-                          {secondaryTeam}
+                      {!isFinal && g.gameDateTime && (
+                        <span className="proj-card-time">
+                          {fmtGameStartCt(g.gameDateTime)}
                         </span>
                       )}
                     </div>
@@ -259,11 +277,69 @@ export default function NewsSection() {
                       </div>
                     )}
                   </div>
+                  {isExpanded && (
+                    <div className="proj-matchup-panel-slot">
+                      <MatchupPanel
+                        game={g}
+                        onClose={() => setExpandedGameId(null)}
+                      />
+                    </div>
+                  )}
+                  </Fragment>
                 );
-              })}
-          </div>
+  };
+
+  // Group projections: upcoming first, then completed. Within each group,
+  // primary team → secondary → others (existing sort).
+  const sortedGames = projQ.data
+    ? [...projQ.data.games].sort((a, b) => {
+        const aP = isPrimary(a) ? 2 : isSecondary(a) ? 1 : 0;
+        const bP = isPrimary(b) ? 2 : isSecondary(b) ? 1 : 0;
+        return bP - aP;
+      })
+    : [];
+  const upcomingGames = sortedGames.filter((g) => g.status !== 'Final');
+  const completedGames = sortedGames.filter((g) => g.status === 'Final');
+
+  return (
+    <>
+      <h2 style={{ marginTop: '1.5rem' }}>Today's games</h2>
+      <div className="card" data-help-anchor="todays-games">
+        {projQ.isLoading && <p className="muted">Loading projections…</p>}
+        {projQ.data && projQ.data.games.length === 0 && (
+          <p className="muted">No games scheduled today.</p>
         )}
+        {upcomingGames.length > 0 && (
+          <>
+            <h3 className="proj-section-head">Upcoming</h3>
+            <div className="proj-grid">
+              {upcomingGames.map(renderProjectionCard)}
+            </div>
+          </>
+        )}
+        {completedGames.length > 0 && (
+          <>
+            <h3
+              className="proj-section-head"
+              style={{ marginTop: upcomingGames.length > 0 ? '1.25rem' : 0 }}
+            >
+              Completed
+            </h3>
+            <div className="proj-grid">
+              {completedGames.map(renderProjectionCard)}
+            </div>
+          </>
+        )}
+        {/* placeholder so JSX parses cleanly when both groups empty */}
+        {projQ.data &&
+          projQ.data.games.length > 0 &&
+          upcomingGames.length === 0 &&
+          completedGames.length === 0 && (
+            <p className="muted">No games scheduled today.</p>
+          )}
       </div>
+
+
 
       <div
         className="news-date-bar"
@@ -283,7 +359,7 @@ export default function NewsSection() {
             type="date"
             className="date-input"
             value={date}
-            max={todayIsoEt()}
+            max={todayIsoCt()}
             onChange={(e) => setDate(e.target.value)}
           />
           <button
@@ -291,7 +367,7 @@ export default function NewsSection() {
             className="date-nav-btn"
             aria-label="Next day"
             onClick={() => setDate(shiftIsoDate(date, 1))}
-            disabled={date >= todayIsoEt()}
+            disabled={date >= todayIsoCt()}
           >
             ›
           </button>
@@ -408,6 +484,7 @@ function NameLink({
       href={savantPlayerUrl(mlbamId)}
       target="_blank"
       rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
     >
       {name}
     </a>

@@ -276,18 +276,27 @@ export function StatDistributionChart({
                 kind === 'current' ||
                 kind === 'comparison' ||
                 (!isSpark && (kind !== null || hovered === i));
+              // entryHref opts the dot into being clickable even in spark
+              // mode (used by the matchup panel's pitcher spark — clicks
+              // jump to that pitcher's Savant page rather than a team page).
+              const hasHref = !!e.entryHref;
+              const clickable = interactive || hasHref;
               return (
                 <g
                   key={e.teamAbbrev}
                   style={{
                     transform: `translate(${x(e.value)}px, ${cy}px)`,
-                    cursor: interactive ? 'pointer' : 'default',
+                    cursor: clickable ? 'pointer' : 'default',
                   }}
                   onMouseEnter={interactive ? () => setHovered(i) : undefined}
                   onMouseLeave={interactive ? () => setHovered(null) : undefined}
-                  onClick={interactive ? (ev) => {
+                  onClick={clickable ? (ev) => {
                     ev.stopPropagation();
-                    navigate(`/team/${e.teamAbbrev}`);
+                    if (e.entryHref) {
+                      window.open(e.entryHref, '_blank', 'noopener,noreferrer');
+                    } else {
+                      navigate(`/team/${e.teamAbbrev}`);
+                    }
                   } : undefined}
                 >
                   <circle

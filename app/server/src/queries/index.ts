@@ -1058,6 +1058,9 @@ export async function getRecapsDaysFromWarehouse(days: number): Promise<RecapsRe
 interface ProjectionRow {
   game_pk: number;
   game_date: string;
+  /** First-pitch ISO timestamp (UTC), e.g. "2026-04-28T22:10:00Z".
+   *  Null when MLB hasn't published a start time yet. */
+  game_datetime: string | null;
   status: string;
   home_team_id: number;
   home_abbrev: string;
@@ -1073,13 +1076,13 @@ interface ProjectionRow {
   home_win_prob: number | null;
 }
 
-/** "Today" in baseball-scoreboard terms is America/New_York, not UTC.
- *  At 9 PM ET on 4/23 a UTC-based date string already reports 4/24,
- *  which would make us show tomorrow's slate instead of tonight's
- *  just-finished games. */
-function todayEt(): string {
+/** "Today" in scoreboard terms — anchored to the user's wall-clock in
+ *  Central Time. ET would roll over at 11 PM CT (midnight ET), hiding
+ *  the late-CT games that just finished. Going one tz west lets the
+ *  user keep tonight's slate visible until their own midnight. */
+function todayCt(): string {
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
+    timeZone: 'America/Chicago',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -1087,9 +1090,11 @@ function todayEt(): string {
 }
 
 export async function getProjectionsFromWarehouse(): Promise<ProjectionsResponse> {
-  const today = todayEt();
+  const today = todayCt();
   const rows = await query<ProjectionRow>(
-    `SELECT g.game_pk, g.game_date, g.status,
+    `SELECT g.game_pk, g.game_date,
+            CAST(g.game_datetime AS STRING) AS game_datetime,
+            g.status,
             g.home_team_id, h.abbrev AS home_abbrev,
             g.away_team_id, a.abbrev AS away_abbrev,
             g.home_score, g.away_score, g.winner_team_id,
@@ -1113,6 +1118,7 @@ export async function getProjectionsFromWarehouse(): Promise<ProjectionsResponse
     games: rows.map((g) => ({
       gameId: String(g.game_pk),
       date: g.game_date,
+      gameDateTime: g.game_datetime,
       homeTeamId: g.home_abbrev,
       awayTeamId: g.away_abbrev,
       probableHomePitcherId: g.home_probable_pitcher_id

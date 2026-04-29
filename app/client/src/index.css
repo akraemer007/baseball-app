@@ -1179,3 +1179,207 @@ table.stat-table td.top-performer {
   margin-top: -6px;
   border-right-color: var(--text);
 }
+
+/* ---- Matchup preview panel (FEAT-1) -------------------------------------
+   Inline expansion below a clicked projection card. Spans the full grid
+   width so the panel commands the eye while neighboring cards retain
+   their grid positions. */
+
+.proj-card {
+  cursor: pointer;
+}
+.proj-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.proj-card-expanded {
+  /* Visual cue that the card is the source of the open panel. */
+  border-color: var(--text-dim);
+}
+
+.proj-matchup-panel-slot {
+  grid-column: 1 / -1;
+  /* No additional border — the panel itself draws its own. */
+}
+
+.matchup-panel {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-dim);
+  border-radius: 4px;
+  padding: 0.85rem 1rem 1rem;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.matchup-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  margin-bottom: 0.6rem;
+  color: var(--text);
+}
+
+.matchup-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+.matchup-close:hover {
+  color: var(--text);
+}
+
+.matchup-body {
+  display: grid;
+  gap: 0.85rem;
+}
+
+/* Two pitcher columns side-by-side; stack on narrow screens. */
+.matchup-pitchers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 600px) {
+  .matchup-pitchers {
+    grid-template-columns: 1fr;
+  }
+}
+
+.matchup-pitcher {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.matchup-pitcher-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.85rem;
+}
+.matchup-pitcher-name {
+  font-weight: 600;
+}
+
+/* Each metric line: label · value · spark plot stretching to fill. */
+.matchup-metric {
+  display: grid;
+  /* Bumped from 2.6rem so "FIP" + the (i) tooltip trigger sit on one
+     line without wrapping. ERA / K/9 still center comfortably. */
+  grid-template-columns: 3.5rem 3.2rem 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+.matchup-metric .metric-label {
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.matchup-metric .metric-val {
+  font-weight: 700;
+  text-align: right;
+}
+.matchup-metric .metric-spark {
+  min-width: 0;
+}
+
+/* Top-hitter mini tables — same flavor as silver_player_season views. */
+.matchup-hitters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 600px) {
+  .matchup-hitters {
+    grid-template-columns: 1fr;
+  }
+}
+
+.matchup-hitter-block {
+  font-size: 0.8rem;
+}
+
+.matchup-hitter-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.25rem;
+}
+.matchup-hitter-table th,
+.matchup-hitter-table td {
+  text-align: left;
+  padding: 0.2rem 0.4rem 0.2rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.matchup-hitter-table th {
+  font-weight: 600;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.matchup-hitter-table td:last-child,
+.matchup-hitter-table th:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.matchup-h2h {
+  font-size: 0.85rem;
+  padding-top: 0.3rem;
+  border-top: 1px dashed var(--border);
+}
+
+/* Sub-section heads inside Today's games card. Smaller than the
+   page-level h2 so they read as dividers, not titles in their own right. */
+.proj-section-head {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+/* Matchup line: team-name link on the left, start-time chip floated
+   to the right via margin-left:auto. Team-color left border on the
+   card already denotes primary/secondary, so no team-tag pills here. */
+.proj-matchup {
+  display: flex;
+  align-items: center;
+  /* Reserve room for the absolute-positioned chevron in top-right. */
+  padding-right: 1.2rem;
+}
+.proj-card-time {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Toggle chevron on projection cards — same pattern as the
+   percentile-row chevron. Pinned to the top-right corner of the card
+   so the matchup line stays clean. Rotates 90deg when expanded. */
+.proj-card {
+  position: relative;
+}
+.proj-card-chevron {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.6rem;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  line-height: 1;
+  transition: transform 150ms, color 150ms;
+  pointer-events: none;
+}
+.proj-card-expanded .proj-card-chevron {
+  transform: rotate(90deg);
+  color: var(--text);
+}
