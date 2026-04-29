@@ -1025,6 +1025,29 @@ table.stat-table td.top-performer {
   margin: 0.5rem 0;
 }
 
+/* DERIV-5 milestones inline above the prose body. Italic, dim, ~0.78rem.
+   Uses the recap-card's existing horizontal padding (no nested card). */
+.recap-milestones {
+  list-style: none;
+  margin: 0 0 0.4rem 0;
+  padding: 0;
+  font-style: italic;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+.recap-milestones li + li {
+  margin-top: 0.15rem;
+}
+.recap-milestones a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+.recap-milestones a:hover {
+  color: var(--text);
+}
+
 .recap-dateline {
   font-weight: 700;
   letter-spacing: 0.08em;
