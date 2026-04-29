@@ -11,6 +11,7 @@ import type {
   GameType,
   HrRaceResponse,
   LeagueResponse,
+  MilestoneEvent,
   PlayerResponse,
   ProjectionsResponse,
   RecapItem,
@@ -1023,7 +1024,9 @@ export async function getRecapsFromWarehouse(date: string): Promise<RecapsRespon
      WHERE g.game_date = '${safeDate}'
      ORDER BY coalesce(r.interest_score, 0) DESC, g.game_pk`,
   );
-  return { date: safeDate, recaps: rows.map(rowToRecap) };
+  const recaps = rows.map(rowToRecap);
+  await attachMilestones(recaps, rows);
+  return { date: safeDate, recaps };
 }
 
 /** Multi-day recap fetch: returns the most-recent N calendar dates that
@@ -1042,6 +1045,7 @@ export async function getRecapsDaysFromWarehouse(days: number): Promise<RecapsRe
      ORDER BY g.game_date DESC, coalesce(r.interest_score, 0) DESC, g.game_pk`,
   );
   const allRecaps = rows.map(rowToRecap);
+  await attachMilestones(allRecaps, rows);
   const byDate = new Map<string, RecapItem[]>();
   for (const r of allRecaps) {
     if (!byDate.has(r.date)) byDate.set(r.date, []);
@@ -1051,6 +1055,129 @@ export async function getRecapsDaysFromWarehouse(days: number): Promise<RecapsRe
     recaps: allRecaps,
     days: Array.from(byDate.entries()).map(([date, recaps]) => ({ date, recaps })),
   };
+}
+
+// ---- milestone enrichment (FEAT-19) ---------------------------------------
+
+interface MilestoneRow {
+  game_pk: number;
+  subject_type: string;
+  subject_id: number;
+  subject_name: string;
+  event_kind: string;
+  event_text: string;
+  streak_length: number | null;
+  comparison_year: number | null;
+  happened_on: string;
+}
+
+/** Attach DERIV-5 milestones to recap items in place. One round-trip:
+ *  build a VALUES list of (game_pk, game_date, away_team_id, home_team_id)
+ *  tuples from the recap rows, then INNER JOIN gold_milestone_events on
+ *  (happened_on = game_date AND team_id IN (home, away)). For player
+ *  subjects we resolve player→team via silver_player_game_batting on
+ *  the same game_pk — restricting to batters who actually appeared in
+ *  the game guarantees the milestone is attributed to one of the two
+ *  teams playing.
+ *
+ *  Mirrors the abandoned attachTransactions pattern (FEAT-13 v1):
+ *  one CTE-driven SQL, results mapped back onto recap items in JS.
+ *
+ *  Decorative — wrapped in try/catch. A failure here MUST NOT take
+ *  down the recap response. */
+async function attachMilestones(recaps: RecapItem[], rows: RecapRow[]): Promise<void> {
+  if (recaps.length === 0) return;
+  try {
+    // Build the (game_pk, date, away_id, home_id) tuple list. Numeric ids
+    // are coerced to int and date is whitelisted regex-style — both
+    // come from our own DB, but we belt-and-suspenders here anyway.
+    const tuples = rows
+      .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.game_date))
+      .map(
+        (r) =>
+          `(${Number(r.game_pk)}, DATE '${r.game_date}', ${Number(r.away_team_id)}, ${Number(r.home_team_id)})`,
+      );
+    if (tuples.length === 0) return;
+    // recap_games CTE: one row per recap with both teams' int ids.
+    // game_teams: unpivot to one row per (game, team) so milestones can
+    //             attach symmetrically.
+    // team_milestones: subject_type='team' joined on team_id.
+    // player_milestones: subject_type='player' joined to
+    //             silver_player_game_batting on (game_pk, player_id) so
+    //             we only attribute a player milestone to the team
+    //             whose roster actually batted that day.
+    const sql = `
+      WITH recap_games(game_pk, game_date, away_team_id, home_team_id) AS (
+        VALUES ${tuples.join(', ')}
+      ),
+      game_teams AS (
+        SELECT game_pk, game_date, away_team_id AS team_id FROM recap_games
+        UNION ALL
+        SELECT game_pk, game_date, home_team_id AS team_id FROM recap_games
+      ),
+      team_milestones AS (
+        SELECT gt.game_pk,
+               m.subject_type, m.subject_id, m.subject_name,
+               m.event_kind, m.event_text,
+               m.streak_length, m.comparison_year, m.happened_on
+          FROM gold_milestone_events m
+          JOIN game_teams gt
+            ON gt.game_date = m.happened_on
+           AND gt.team_id   = m.subject_id
+         WHERE m.subject_type = 'team'
+      ),
+      player_milestones AS (
+        SELECT gt.game_pk,
+               m.subject_type, m.subject_id, m.subject_name,
+               m.event_kind, m.event_text,
+               m.streak_length, m.comparison_year, m.happened_on
+          FROM gold_milestone_events m
+          JOIN silver_player_game_batting b
+            ON b.player_id = m.subject_id
+          JOIN game_teams gt
+            ON gt.game_pk = b.game_pk
+           AND gt.team_id = b.team_id
+           AND gt.game_date = m.happened_on
+         WHERE m.subject_type = 'player'
+      )
+      SELECT * FROM team_milestones
+      UNION ALL
+      SELECT * FROM player_milestones
+    `;
+    const milestoneRows = await query<MilestoneRow>(sql);
+    if (milestoneRows.length === 0) return;
+    // Group by game_pk; dedupe — a player who batted for both halves of
+    // a doubleheader would otherwise show twice.
+    const byGame = new Map<string, MilestoneEvent[]>();
+    const seen = new Map<string, Set<string>>();
+    for (const m of milestoneRows) {
+      const key = String(m.game_pk);
+      const dedupeKey = `${m.subject_type}|${m.subject_id}|${m.event_kind}|${m.happened_on}`;
+      if (!seen.has(key)) seen.set(key, new Set());
+      if (seen.get(key)!.has(dedupeKey)) continue;
+      seen.get(key)!.add(dedupeKey);
+      const list = byGame.get(key) ?? [];
+      list.push({
+        subjectType: m.subject_type === 'team' ? 'team' : 'player',
+        subjectId: String(m.subject_id),
+        subjectName: m.subject_name,
+        eventKind: m.event_kind,
+        eventText: m.event_text,
+        streakLength: m.streak_length ?? null,
+        comparisonYear: m.comparison_year ?? null,
+        happenedOn: m.happened_on,
+      });
+      byGame.set(key, list);
+    }
+    for (const r of recaps) {
+      const list = byGame.get(r.gameId);
+      if (list && list.length > 0) r.relevantMilestones = list;
+    }
+  } catch (err) {
+    // Decorative enrichment must never take the recap response down.
+    // Swallow + log; clients see no relevantMilestones field.
+    console.warn('[attachMilestones] failed; recap response will omit milestones:', err);
+  }
 }
 
 // ---- /api/projections/today ------------------------------------------------

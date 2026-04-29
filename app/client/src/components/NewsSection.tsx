@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
 import { usePreferences } from '../lib/preferences';
@@ -7,7 +8,12 @@ import {
   savantPlayerUrl,
   savantPreviewUrl,
 } from '../lib/savant';
-import type { LeagueResponse, ProjectionsResponse, RecapsResponse } from '@shared/types';
+import type {
+  LeagueResponse,
+  MilestoneEvent,
+  ProjectionsResponse,
+  RecapsResponse,
+} from '@shared/types';
 
 function formatGameType(t: string): string {
   switch (t) {
@@ -371,6 +377,15 @@ export default function NewsSection() {
                     {r.upsetFlag && <span className="pill upset">UPSET</span>}
                   </div>
                 </div>
+                {r.relevantMilestones && r.relevantMilestones.length > 0 && (
+                  <ul className="recap-milestones">
+                    {r.relevantMilestones.map((m, idx) => (
+                      <li key={`${m.subjectType}-${m.subjectId}-${m.eventKind}-${idx}`}>
+                        {renderMilestoneText(m)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <p className="recap-body">
                   <span className="recap-dateline mono">{r.dateline}</span>
                   {r.summary}
@@ -390,6 +405,37 @@ export default function NewsSection() {
           })}
       </div>
     </>
+  );
+}
+
+/** Wrap the player name inside a milestone's event_text in a Savant link.
+ *  Player milestones embed the player_name as plain text — we splice it
+ *  out and replace with an <a>. Team milestones use the team's full name
+ *  which doesn't link anywhere useful, so we render the text as-is.
+ *
+ *  v1 caveat: substring collision (a player whose name is a prefix or
+ *  contains another player's name) would mis-link. Treat as theoretical
+ *  for now — names in event_text always come from the player's own row. */
+function renderMilestoneText(m: MilestoneEvent): ReactNode {
+  if (m.subjectType !== 'player' || !m.subjectName) {
+    return m.eventText;
+  }
+  const idx = m.eventText.indexOf(m.subjectName);
+  if (idx < 0) return m.eventText;
+  const before = m.eventText.slice(0, idx);
+  const after = m.eventText.slice(idx + m.subjectName.length);
+  return (
+    <Fragment>
+      {before}
+      <a
+        href={savantPlayerUrl(m.subjectId)}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {m.subjectName}
+      </a>
+      {after}
+    </Fragment>
   );
 }
 
