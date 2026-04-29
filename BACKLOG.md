@@ -3695,6 +3695,285 @@ oriented.
 
 ---
 
+### FEAT-29 — Win-probability arc chart on recap cards
+
+**Lane:** server + client
+**Status:** blocked-by: DERIV-10 · **Blocks:** none
+**Scope:** Inline mini-chart per recap card showing the home-team
+win probability arc through the game. X-axis is play index
+(or inning fractions). Y-axis is home WP%. Line color flips at
+the WP=0.5 crossover (home color above, away color below). Top
+1–2 plays by `|wpa_delta|` get small end-of-line annotations
+("Suzuki HR (3) · Cubs +18%"). The classic "feel the shape of
+the game" Jon-Bois-style chart.
+
+**Acceptance criteria:**
+
+- New endpoint `GET /api/game/:gamePk/wpa` returns
+  `{plays: [{play_index, inning, half, home_wp_post, wpa_delta,
+  event, batter_name?}, ...], home_team, away_team}`.
+- New `WpaArcChart.tsx` component, hand-rolled d3 (per repo
+  convention; no chart library).
+- Default chart height ~80px, full width of the recap card.
+- Renders inline on every recap card on the News section.
+- Hover surfaces the play description in a small tooltip with
+  WP delta.
+- Top 1–2 plays by `|wpa_delta|` get end-of-line annotations.
+  Annotation text is plain — play description + WP delta. No
+  "thrilling" / "dramatic" / etc. (mirror recap voice rules.)
+- Chart is lazy-loaded: don't fetch WPA for a recap card until
+  it's within ~200px of the viewport (IntersectionObserver).
+- Performance: 7 days of recap cards (~100 games) renders
+  without blocking the page.
+
+**Files expected to change:**
+
+- ADD `app/server/src/queries/wpa.ts` (post-ARCH-8) or extend
+  `queries/index.ts` (pre-ARCH-8).
+- ADD `app/server/src/routes/game.ts` route or extend the
+  existing one.
+- ADD `app/shared/types/wpa.ts` exporting `WpaArcResponse`,
+  `WpaPoint`.
+- ADD `app/client/src/components/WpaArcChart.tsx`.
+- MODIFY `app/client/src/components/NewsSection.tsx` (or the
+  recap-card component, wherever the rendering lives) to
+  embed the chart.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on FEAT-29.
+Read BACKLOG.md §FEAT-29 for scope + acceptance criteria.
+
+Build the inline WPA arc chart on recap cards. DERIV-10 has
+landed and gold_play_wpa exists.
+
+Steps:
+
+1. Server: add a getWpaArcFromWarehouse(gamePk) function that
+   reads gold_play_wpa for one game, ordered by play_index,
+   and joins to silver_pa for the batter name + event description.
+   Wire as GET /api/game/:gamePk/wpa.
+
+2. Shared types: add WpaPoint and WpaArcResponse in
+   app/shared/types/wpa.ts. Export from app/shared/types/index.ts.
+
+3. Client: WpaArcChart.tsx — hand-rolled d3 (NO chart library
+   imports). Mirror the conventions of DivisionTrajectoryChart:
+   end-of-line annotations with leader-line nudging, hover
+   crosshair, leftward sweep on first paint.
+
+4. Embed in the recap card. Use IntersectionObserver to defer
+   the fetch+render until the card is near the viewport.
+
+5. Annotation copy: top 1–2 plays by |wpa_delta|, format as
+   "Last name + event_short · ±NN%". Use the same forbidden-
+   words list as the recap prompts — no flourish.
+
+Verify:
+- ./scripts/dev.sh, open / and scroll the News section. Each
+  recap card has a WP arc.
+- Network panel: WPA fetches only fire as cards scroll into view.
+- 7-day recap section (default) renders without jank.
+- typecheck: cd app && npx tsc --noEmit -p client/tsconfig.json
+  -p server/tsconfig.json
+
+Do NOT touch jobs/, do NOT alter gold_play_wpa shape.
+
+Commit cleanly with a screenshot in the PR body if possible.
+```
+
+**Notes / risks:** Density check is the real test. 100 small
+charts on one page can be heavy; lazy-load is non-negotiable.
+If the chart still feels noisy on dense days, fall back to
+"only render WPA arc on cards user has expanded."
+
+---
+
+### FEAT-30 — Storylines block on team page
+
+**Lane:** server + client
+**Status:** blocked-by: DERIV-11 · **Blocks:** none
+**Scope:** Render today's per-team storylines as a 3–5 bullet
+section on the team page. Quiet typography — serif italic, no
+card border, no tile. Sits between the trajectory chart and
+the stat cards (placement TBD with user during build). Newspaper-
+column feel; "the columnist's take" voice slot.
+
+**Acceptance criteria:**
+
+- New endpoint `GET /api/team/:teamId/storylines` returns the
+  latest storyline rows for the team (for today, falling back
+  to the most recent date if today's haven't generated yet).
+- New `TeamStorylines.tsx` component renders the bullets as
+  serif italic, no surrounding card. Each bullet is its own
+  `<p>`; spacing is tight.
+- Empty state: render nothing pre-5 AM ET (when DERIV-11 hasn't
+  run yet) and on days the LLM job failed. Don't render an
+  empty card; just omit the section entirely.
+- If `generated_for_date` is not today, prepend a small dateline
+  like `Apr 28 ·` in `--text-dim`.
+- Visual diff against current TeamPage: section appears above
+  the stat cards by default. User confirms placement during
+  review.
+
+**Files expected to change:**
+
+- ADD `app/server/src/queries/storylines.ts` (post-ARCH-8) or
+  extend `queries/index.ts` (pre-ARCH-8).
+- ADD `app/server/src/routes/team.ts` extension or new
+  `routes/storylines.ts`.
+- ADD `app/shared/types/storyline.ts` exporting
+  `TeamStorylineResponse`.
+- ADD `app/client/src/components/TeamStorylines.tsx`.
+- MODIFY `app/client/src/pages/TeamPage.tsx` — embed the
+  component.
+- MODIFY `app/client/src/index.css` — small block for the
+  storyline typography (serif italic, dim, tight spacing).
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on FEAT-30.
+Read BACKLOG.md §FEAT-30 for scope + acceptance criteria.
+
+DERIV-11 has landed; gold_team_storyline exists. Build the
+team-page surface.
+
+Steps:
+
+1. Server: getStorylinesForTeamFromWarehouse(teamId) returns
+   the most-recent generated_for_date's bullets, ordered by
+   bullet_index. Wire as GET /api/team/:teamId/storylines.
+
+2. Shared types: TeamStorylineResponse with
+   { generated_for_date: string, bullets: { text: string }[] }.
+
+3. Client: TeamStorylines.tsx — minimal markup. Serif italic
+   bullets, no card border, no panel chrome. If
+   generated_for_date < today: prepend `<dateline> ·` in
+   var(--text-dim). If empty array or fetch error: render null
+   (no error state, no "loading…" ghost).
+
+4. Embed in TeamPage.tsx between the trajectory chart and the
+   stat cards. If you've also taken ARCH-9 in the same wave,
+   rebase first so PercentileRow extraction is in.
+
+5. CSS: one small block — `.team-storylines p` with
+   `font-family: var(--font-serif)`, italic, tight line-height.
+   No background, no border. Should feel like a magazine
+   sidebar, not a widget.
+
+Verify:
+- ./scripts/dev.sh, open /team/CHC. Storylines render between
+  trajectory and stat cards.
+- Disable the API in DevTools — section disappears, page
+  doesn't break.
+
+Do NOT add a card border. Do NOT add a heading. Do NOT animate
+the bullets in. The voice is the signal; the chrome stays out
+of the way.
+
+Commit cleanly. Screenshot in the PR body so the user can
+voice-check the placement.
+```
+
+**Notes / risks:** Conflicts with ARCH-9 (also touches
+TeamPage.tsx). Sequence: ARCH-9 → FEAT-30. Voice consistency is
+the real success criterion — the bullets need to feel like the
+recaps' continuation, not a separate widget.
+
+---
+
+### FEAT-31 — Series recap roll-up on News page
+
+**Lane:** server + client
+**Status:** blocked-by: DERIV-12 · **Blocks:** none
+**Scope:** Above each day's dated recap cards on the News
+section, render any series that wrapped on that date as a
+compact one-line callout. Click expands inline to the full
+paragraph from `gold_series_recap.recap_text`. Adds the chapter-
+level structure recaps lack.
+
+**Acceptance criteria:**
+
+- Either: extend the existing `RecapsByDateResponse` (per
+  ARCH-11) to include `series_wraps: SeriesWrapItem[]`, OR add
+  a new `GET /api/series-recaps?date=YYYY-MM-DD` endpoint. Pick
+  the smaller diff (probably the former if ARCH-11 has landed).
+- New `SeriesWrapCallout.tsx` renders a one-line teaser per
+  wrap. Format: `<away abbrev> @ <home abbrev>: <won by>` then
+  a short editorial fragment from the first sentence of
+  `recap_text`.
+- Click expands inline (CSS-only or simple state toggle —
+  no drawer, no modal) to the full paragraph.
+- Voice: short, declarative, no flourish. The callout itself
+  uses `--font-serif` to differentiate from the dense recap
+  cards below.
+- If no series wrapped on the date, render nothing — no empty
+  state.
+
+**Files expected to change:**
+
+- MODIFY `app/server/src/queries/recaps.ts` (post-ARCH-8) /
+  `queries/index.ts` (pre).
+- MODIFY `app/shared/types/recap.ts` — add `series_wraps` to
+  the day shape.
+- ADD `app/client/src/components/SeriesWrapCallout.tsx`.
+- MODIFY `app/client/src/components/NewsSection.tsx` — render
+  the callouts above each day's recap cards.
+- MODIFY `app/client/src/index.css` — small block for callout
+  typography.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on FEAT-31.
+Read BACKLOG.md §FEAT-31 for scope + acceptance criteria.
+
+DERIV-12 has landed; gold_series_recap exists. Surface it on
+the News section.
+
+Steps:
+
+1. Server: extend the recaps query to also return any rows from
+   gold_series_recap with end_date == the requested date.
+   Attach as `series_wraps` on each day's payload.
+   If ARCH-11 (RecapsResponse discriminated union) has landed,
+   add this to RecapsByDateResponse.
+
+2. Client: SeriesWrapCallout.tsx renders one row per wrapped
+   series. Single-line collapsed state shows
+   "<AWAY> @ <HOME>: <result>" + first sentence of recap_text.
+   Click toggles expansion to the full paragraph.
+
+3. NewsSection.tsx: render `<SeriesWrapCallout>` blocks above
+   the day's recap cards. If `series_wraps` is empty for a
+   day, render nothing.
+
+4. CSS: one block — `.series-wrap-callout` uses
+   var(--font-serif), italic for the teaser fragment, tighter
+   line-height than recap cards. No card border. The callout
+   should feel like a chapter-divider, not another widget.
+
+Verify:
+- ./scripts/dev.sh, open /. After a day with completed series
+  (yesterday in-season), at least one callout shows above the
+  recap cards. Click to expand reveals the paragraph.
+- typecheck passes.
+
+Do NOT add a chart. Do NOT add a drawer. Inline expansion only.
+
+Commit cleanly with a screenshot.
+```
+
+**Notes / risks:** Conflicts with ARCH-11 (RecapsResponse
+shape). If both land in the same wave, sequence ARCH-11 →
+FEAT-31. Otherwise, FEAT-31 patches the legacy dual-shaped
+response and ARCH-11 picks it up later.
+
+---
+
 ### PIPE-5 — Sportsbook odds: replace / augment Elo (stub)
 
 **Lane:** pipeline
@@ -3728,6 +4007,323 @@ benefit weekly digests once those land (FEAT-9).
 **TBD:** tool choice (Anthropic web search vs Brave Search API vs
 custom scraper), source trust + licensing, latency budget, cost per
 recap, prompt-injection defense.
+
+---
+
+### DERIV-10 — `gold_play_wpa`: per-play win probability + WPA delta
+
+**Lane:** derivation
+**Status:** unblocked (silver_play exists post-PIPE-0.5) ·
+**Blocks:** FEAT-29
+**Scope:** For every play in `silver_play`, compute home-team
+win probability before and after the play using the canonical
+Tango WP table (24 base-out states × score margin × inning,
+static lookup). One row per play with `home_wp_pre`,
+`home_wp_post`, `wpa_delta`. Powers per-game win-probability
+arc charts on recap cards.
+
+This is **not** a rebuild of DERIV-4. DERIV-4 produced
+`gold_player_clutch` (a season-long leaderboard) using a coarse
+logistic that biased toward closers; it was abandoned. This
+produces per-play arc data using a static lookup, which is well-
+defined and auditable. If a clutch leaderboard is wanted later,
+it can be re-derived from this table — but that's a separate
+ticket.
+
+**Acceptance criteria:**
+
+- New `gold_play_wpa` table with columns: `game_pk`, `season`,
+  `play_index` (order within game), `inning`, `half`,
+  `base_state` (0–7, encoding `(runner_1b, runner_2b, runner_3b)`),
+  `outs`, `score_diff_pre` (home − away), `home_wp_pre`,
+  `home_wp_post`, `wpa_delta` (`home_wp_post − home_wp_pre`),
+  `batter_id`, `pitcher_id`, `event` (string).
+- WP table is a static lookup loaded from a baked-in CSV
+  (`jobs/gold/wp_table.csv`), source documented in a header
+  comment with link.
+- Reconciliation check: for any `Final` regular-season game,
+  `home_wp_pre` of the first play is within ±0.05 of 0.55 (rough
+  HFA prior) and `home_wp_post` of the last play is 1.0 if home
+  won, 0.0 if away won.
+- Brier-score sanity check on a full prior season is in the job
+  output, target Brier ≤ 0.20.
+- Job is portable to plain Postgres — no Spark, no Delta APIs.
+- Wired into the hourly refresh job after `build_silver`.
+
+**Files expected to change:**
+
+- ADD `jobs/gold/build_play_wpa.py` (Python, loads the WP CSV
+  + walks `silver_play` rows in chronological order, writes to
+  `gold_play_wpa` via `INSERT ... ON CONFLICT`).
+- ADD `jobs/gold/wp_table.csv` — the Tango WP table, with a
+  header comment naming the source.
+- MODIFY `resources/hourly_refresh_job.yml` — add a
+  `build_play_wpa` task downstream of `build_silver`.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on DERIV-10.
+Read BACKLOG.md §DERIV-10 for scope + acceptance criteria.
+
+Write a portable Python job that produces gold_play_wpa from
+silver_play using a static Tango WP lookup. Steps:
+
+1. First, inspect the silver_play schema (run a `LIMIT 5` against
+   the warehouse) and confirm it has: game_pk, inning, half,
+   base_state (or runner_on_1/2/3 cols), outs, score_diff,
+   batter_id, pitcher_id, event_string, AND a way to order plays
+   within a game (at_bat_index or similar). If a column is
+   missing, STOP and report — do not invent it.
+
+2. Source the canonical Tango WP table. Recommended source:
+   Tom Tango's published "WP by inning, score, base-out" table
+   (https://www.tangotiger.net/welist.html). Bake it into
+   jobs/gold/wp_table.csv with columns:
+     inning,half,outs,base_state,score_diff_bucket,home_wp
+   where score_diff_bucket buckets are at minimum
+   {≤-4,-3,-2,-1,0,+1,+2,+3,≥+4}. Add a header comment in the
+   CSV documenting the source.
+
+3. Write jobs/gold/build_play_wpa.py:
+   - Loads wp_table.csv into a dict keyed on
+     (inning, half, outs, base_state, score_diff_bucket).
+   - Reads silver_play in chronological order per game_pk.
+   - For each play: lookup home_wp_pre from the pre-state,
+     simulate the post-state from the event, lookup home_wp_post,
+     compute wpa_delta. Walk-off and last-out plays force
+     home_wp_post to 1.0 / 0.0.
+   - Writes gold_play_wpa via INSERT ... ON CONFLICT
+     (game_pk, play_index) DO UPDATE.
+
+4. At the end of the job, print:
+   - Number of plays processed
+   - Brier score on completed games (avg of (winner_wp − 1)^2
+     across the last play of each game; target ≤ 0.20)
+   - First-play home_wp distribution (should center on ~0.55)
+
+5. Add the new task to resources/hourly_refresh_job.yml after
+   build_silver.
+
+Do NOT introduce SparkSession, dbutils, or Delta-specific APIs.
+Use plain pandas + databricks SQL. Commit when the Brier check
+passes on at least 2024+2025 data.
+```
+
+**Notes / risks:** The Tango WP table's score-diff bucketing
+caps at ±4 — runs added beyond that don't move WP much, so this
+is fine. Postponed-and-resumed games can have a `play_index`
+gap; sort by inning + half + outs as a secondary key. **Do not**
+recreate DERIV-4's logistic — the whole point of this rebuild is
+to use a static lookup.
+
+---
+
+### DERIV-11 — `gold_team_storyline`: daily LLM team storylines
+
+**Lane:** derivation (LLM)
+**Status:** unblocked · **Blocks:** FEAT-30
+**Scope:** Generate 3–5 short bulleted "what's actually happening
+with this team right now" storylines per team per day. Inputs:
+last 14 days of `silver_team_day`, recent `gold_milestone_events`
+for the team, last 7 days of `gold_game_recap.recap_text`,
+trailing 14-day rolling stats from `silver_player_game_batting/
+pitching`. Output: opinionated, columnist-voice bullets in the
+same voice as the recap prompts. Adds continuity-across-days,
+which the app currently lacks.
+
+Pattern mirrors DERIV-6 (weekly digest LLM job): prompt-as-file,
+NOT-EXISTS gating, Haiku 4.5 endpoint, schedule on the morning
+chain.
+
+**Acceptance criteria:**
+
+- New `gold_team_storyline` table: `(team_id, generated_for_date,
+  bullet_index, bullet_text, supporting_metrics_json,
+  generated_at)`. PK is `(team_id, generated_for_date,
+  bullet_index)`.
+- New job `jobs/storylines/generate_storylines.py` writes 3–5
+  rows per team per day. Idempotent: re-run for the same
+  `(team_id, generated_for_date)` is a no-op unless `force=true`.
+- Prompt at `jobs/storylines/prompts/team_storyline_v1.md`,
+  copying the v2 recap prompt's forbidden-words list and "do not
+  invent stats" rule. Adds: each bullet must cite a concrete
+  metric or game; no rhetorical questions; no "could be" hedge
+  phrases.
+- Endpoint: `databricks-claude-haiku-4-5` (same as recaps).
+- Cost target: under $1/month for daily 30-team runs.
+- Job is portable to plain Postgres — no Spark, no Delta APIs.
+  LLM client is `WorkspaceClient().serving_endpoints.query`
+  today; on the migration to Anthropic direct (per
+  `rebuild_without_databricks.md`) it swaps cleanly.
+- Wired into `resources/morning_recaps_job.yml` after recap
+  generation.
+
+**Files expected to change:**
+
+- ADD `jobs/storylines/generate_storylines.py`.
+- ADD `jobs/storylines/prompts/team_storyline_v1.md`.
+- MODIFY `resources/morning_recaps_job.yml` — add a
+  `generate_storylines` task after `generate_recaps`.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on DERIV-11.
+Read BACKLOG.md §DERIV-11 for scope + acceptance criteria.
+
+Build a daily per-team storyline LLM job, modeled on the existing
+weekly digest (jobs/digest/generate_weekly_digest.py — read it
+first). Differences from the digest: per-team daily, short
+bullets (not paragraphs), 3–5 bullets per team.
+
+Steps:
+
+1. Write the prompt at jobs/storylines/prompts/team_storyline_v1.md.
+   Must include: forbidden-words list (copy from recap_v2),
+   "do not invent stats", "each bullet cites a concrete number
+   or game", "no rhetorical questions", "no hedge phrases like
+   'could be'", "3 to 5 bullets, ≤ 25 words each", the team's
+   primary color and abbrev as context, structured input
+   (last 14 days team_day, recent milestones, last 7 game
+   recaps, rolling player stats).
+
+2. Write jobs/storylines/generate_storylines.py:
+   - Reads catalog/schema from dbutils.widgets (today; that
+     becomes argparse on the Postgres migration).
+   - For each of the 30 teams: assemble the input blob, call the
+     Haiku endpoint, parse JSON response of shape
+     {bullets: [{text, metric_ref}]}, write to
+     gold_team_storyline.
+   - Use NOT-EXISTS gating: if rows already exist for
+     (team_id, generated_for_date), skip unless force=true.
+   - Print per-team counts + total cost estimate at the end.
+
+3. Add a generate_storylines task to
+   resources/morning_recaps_job.yml downstream of
+   generate_recaps. The task takes catalog, schema, force as
+   widgets.
+
+4. Smoke-test: run for one team (e.g. CHC) for yesterday's
+   date. Eyeball the output — voice should match the recaps,
+   bullets should each have a number, no rhetorical questions.
+
+Do NOT introduce SparkSession, dbutils-as-business-logic, or
+Delta-specific APIs beyond what the existing recap job uses.
+
+Commit cleanly. PR body includes one team's sample output so
+the user can voice-check before deploying.
+```
+
+**Notes / risks:** Voice drift is the biggest risk. Aggressively
+share the forbidden-words list with `recap_v2` — if those two
+prompts disagree, the app sounds like two writers. Possibly
+factor a shared `prompts/voice_rules.md` partial that both
+prompts reference, but that's a follow-up. Cost is fine: 30
+teams × ~3K input × $0.25/MTok ≈ $0.02/day input + similar
+output ≈ $1/month.
+
+---
+
+### DERIV-12 — `gold_series_recap`: LLM series wrap-ups
+
+**Lane:** derivation (LLM)
+**Status:** unblocked · **Blocks:** FEAT-31
+**Scope:** When a series ends, generate a one-paragraph wrap-up
+from the constituent `gold_game_recap` rows + final scores.
+Powers the series-roll-up on the News page. Series detection at
+morning-recaps time: any `(home_team_id, away_team_id)` pair with
+games yesterday but no game today, walked back through contiguous
+game_dates with the same pair to find the series boundary.
+
+**Acceptance criteria:**
+
+- New `gold_series_recap` table:
+  `(series_id, season, start_date, end_date, home_team_id,
+  away_team_id, games_played, games_won_home, games_won_away,
+  recap_text, generated_at)`. `series_id` is a deterministic hash
+  of `(home_team_id, away_team_id, start_date)`.
+- New job `jobs/recaps/generate_series_recaps.py`. Pattern mirrors
+  `generate_recaps.py`: NOT-EXISTS gating on `series_id`,
+  Haiku endpoint, prompt-as-file.
+- Detection heuristic: a series ends when two teams play 2–4
+  contiguous days at the same venue and then don't play each
+  other the next day. Off-day in the middle of a series is
+  tolerated only if the host city's schedule shows a rainout.
+  For v1, gate strictly on consecutive `game_date`s (no gap) —
+  postponed-and-resumed series can be a v1.5 fix.
+- Prompt at `jobs/recaps/prompts/series_recap_v1.md`. Output is
+  one paragraph (~60–90 words) in recap voice. The constituent
+  game recaps are the input; the prompt re-states the same
+  forbidden-words rules.
+- Wired into `resources/morning_recaps_job.yml` after
+  `generate_recaps`.
+- Job is portable to plain Postgres.
+
+**Files expected to change:**
+
+- ADD `jobs/recaps/generate_series_recaps.py`.
+- ADD `jobs/recaps/prompts/series_recap_v1.md`.
+- MODIFY `resources/morning_recaps_job.yml`.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on DERIV-12.
+Read BACKLOG.md §DERIV-12 for scope + acceptance criteria.
+
+Build a series-recap LLM job, modeled on
+jobs/recaps/generate_recaps.py (read it first). Output is one
+paragraph per completed series, written in the same voice as the
+game recaps but rolling up 2–4 games into a story.
+
+Steps:
+
+1. Series detection — write a SQL query against silver_game that
+   for a given target_date (yesterday) returns rows of
+   (home_team_id, away_team_id, start_date, end_date, game_pks)
+   where:
+     - All games are between the same two teams.
+     - Games are on consecutive game_dates with no gap.
+     - At least one game's game_date == target_date.
+     - target_date + 1 has no game between this pair.
+     - 2 ≤ count ≤ 4.
+
+2. Prompt at jobs/recaps/prompts/series_recap_v1.md. Inputs in
+   the prompt body:
+     - The 2–4 individual game recaps (recap_text from
+       gold_game_recap).
+     - Final score per game.
+     - Team primary colors + abbrevs.
+   Output spec: ONE paragraph, 60–90 words, no inflated
+   adjectives (forbidden-words list copied from recap_v2),
+   leads with the series winner if there is one, mentions the
+   single most consequential game/play, no "thrilling" /
+   "dramatic" / etc.
+
+3. Job: walk detected series, NOT-EXISTS gate on series_id,
+   call Haiku, parse response JSON of shape
+   {recap_text: string}, INSERT ... ON CONFLICT DO NOTHING
+   into gold_series_recap.
+
+4. Add the task to resources/morning_recaps_job.yml after
+   generate_recaps.
+
+5. Smoke-test: run on yesterday. Eyeball output for any 1
+   completed series.
+
+Do NOT introduce SparkSession or Delta-specific APIs beyond
+what generate_recaps.py already uses.
+
+Commit cleanly. PR body includes one series's sample output.
+```
+
+**Notes / risks:** The "consecutive game_dates with no gap" rule
+will miss postponed-and-resumed series. Acceptable for v1 — a
+follow-up can extend the heuristic. If the rainout case is
+common enough to matter, gate on `silver_game.detailed_status`
+including 'Postponed' for the gap day. Cost: ~15 series wrapping
+per day × small prompt ≈ pennies/month.
 
 ---
 
