@@ -22,7 +22,7 @@ worktree. The brainstorm archive lives at `make_it_impressive.md`.
 
 ---
 
-## Progress (last updated 2026-04-28)
+## Progress (last updated 2026-04-29)
 
 | Wave | Tickets | Status |
 |------|---------|--------|
@@ -30,8 +30,8 @@ worktree. The brainstorm archive lives at `make_it_impressive.md`.
 | 1 | ARCH-3, FEAT-2, FEAT-3, FEAT-10, FEAT-14, FEAT-15, FEAT-17 | ✅ |
 | 2 | PIPE-0.5, PIPE-1, PIPE-2, PIPE-3 | ✅ (PIPE-4 odds skipped) |
 | 3 | DERIV-1, DERIV-2, DERIV-3, DERIV-4, DERIV-5, DERIV-6 | ✅ |
-| 4 | FEAT-1, FEAT-4 | ⏭️ in review (FEAT-5/6/7/13 abandoned, FEAT-8 rescoped → Wave 5) |
-| 5 | DERIV-11, FEAT-12, FEAT-30 | ⏭️ (DERIV-6/7 + FEAT-9 abandoned; replaced by DERIV-11/FEAT-30) |
+| 4 | FEAT-1, FEAT-4 | ✅ (FEAT-5/6/7/13 abandoned, FEAT-8 rescoped → Wave 5) |
+| 5 | DERIV-11, FEAT-12, FEAT-30 | ✅ (DERIV-6/7 + FEAT-9 abandoned; replaced by DERIV-11/FEAT-30) |
 | 6+ | DERIV-8, DERIV-9, PIPE-5, FEAT-18, FEAT-20, FEAT-21, FEAT-22, FEAT-28, ARCH-6..13, FEAT-23..27, DERIV-10/12, FEAT-29/31 | ⏭️ stubs |
 
 Other status:
