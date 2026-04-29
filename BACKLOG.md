@@ -31,8 +31,8 @@ worktree. The brainstorm archive lives at `make_it_impressive.md`.
 | 2 | PIPE-0.5, PIPE-1, PIPE-2, PIPE-3 | ✅ (PIPE-4 odds skipped) |
 | 3 | DERIV-1, DERIV-2, DERIV-3, DERIV-4, DERIV-5, DERIV-6 | ✅ |
 | 4 | FEAT-1, FEAT-4 | ⏭️ in review (FEAT-5/6/7/13 abandoned, FEAT-8 rescoped → Wave 5) |
-| 5 | DERIV-7, DERIV-8, FEAT-9, FEAT-12 | ⏭️ (ARCH-2/5 abandoned; FEAT-8/19 merged) |
-| 6+ | DERIV-9, PIPE-5, FEAT-18, FEAT-20, FEAT-21, FEAT-22, FEAT-28, ARCH-6..13, FEAT-23..27 | ⏭️ stubs |
+| 5 | DERIV-11, FEAT-12, FEAT-30 | ⏭️ (DERIV-6/7 + FEAT-9 abandoned; replaced by DERIV-11/FEAT-30) |
+| 6+ | DERIV-8, DERIV-9, PIPE-5, FEAT-18, FEAT-20, FEAT-21, FEAT-22, FEAT-28, ARCH-6..13, FEAT-23..27, DERIV-10/12, FEAT-29/31 | ⏭️ stubs |
 
 Other status:
 - **FEAT-11** (recap interest chips) — already-shipped, closed.
@@ -1783,7 +1783,20 @@ that year. Optionally filter out or flag in `notes`.
 
 ---
 
-### DERIV-6 — Weekly digest LLM job
+### DERIV-6 — Weekly digest LLM job — **ABANDONED 2026-04-29**
+
+**Status:** abandoned · **Blocks:** none
+
+**Why abandoned:** The weekly-paragraph cadence is the wrong shape for
+this app's surfaces — a Cubs fan checking on Wednesday gets a recap
+of last week, which feels stale next to the daily-updating trajectory
+chart. Replaced by DERIV-11 (daily storylines, columnist voice,
+3–5 bullets per team per day) which carries continuity across days.
+`gold_weekly_digest` becomes orphaned; cleanup folded into DERIV-8.
+
+(Original ticket body preserved below for context.)
+
+### DERIV-6 (original, now retired) — Weekly digest LLM job
 
 **Lane:** derivation (mixed — uses LLM)
 **Status:** unblocked · **Blocks:** FEAT-9
@@ -1853,7 +1866,20 @@ once FEAT-9 needs them.
 
 ---
 
-### DERIV-7 — Extend weekly digest job to all 30 teams
+### DERIV-7 — Extend weekly digest job to all 30 teams — **ABANDONED 2026-04-29**
+
+**Status:** abandoned · **Blocks:** none
+
+**Why abandoned:** Implementation finished cleanly (commit `0c8605c`
+on a now-deleted worktree) but the underlying design — weekly
+paragraph per team — got reframed as a daily storylines feed
+(DERIV-11). The agent's prompt-rewrite + silver_team-scan code is
+worth referencing when DERIV-11 dispatches, but the work itself is
+discarded.
+
+(Original ticket body preserved below for context.)
+
+### DERIV-7 (original, now retired) — Extend weekly digest job to all 30 teams
 
 **Lane:** derivation (LLM)
 **Status:** unblocked · **Blocks:** FEAT-9
@@ -1922,6 +1948,7 @@ dependency map — no downstream gold or app query reads them.
 | `gold_player_clutch` | DERIV-4 | FEAT-7 (clutch leaders widget) |
 | `gold_team_sos` | DERIV-3 | FEAT-6 (SoS tooltip) |
 | `gold_reliever_workload` | DERIV-2 | FEAT-5 (bullpen fatigue) |
+| `gold_weekly_digest` | DERIV-6 | FEAT-9 (weekly digest card) — replaced by DERIV-11/FEAT-30 |
 
 **Don't blanket-deprecate.** When this ticket runs, the agent must
 prompt the user per-table: keep building it (might be used in a
@@ -1970,9 +1997,13 @@ STEP 0 — Ask the user (BEFORE any code or SQL changes):
 
 Present this list and ask for a per-row decision (drop / keep):
 
-  - gold_player_clutch (DERIV-4) → consumer FEAT-7 abandoned
+  - gold_player_clutch  (DERIV-4) → consumer FEAT-7 abandoned
   - gold_team_sos       (DERIV-3) → consumer FEAT-6 abandoned
   - gold_reliever_workload (DERIV-2) → consumer FEAT-5 abandoned
+  - gold_weekly_digest  (DERIV-6) → consumer FEAT-9 abandoned
+                                    (replaced by DERIV-11/FEAT-30)
+                                    Also retire `weekly_digest_job`
+                                    in resources/ alongside.
   - silver_transaction  (PIPE-2)  → consumer FEAT-13 abandoned
                                     (mention but ingest path is
                                     different from gold tables)
@@ -2624,7 +2655,19 @@ adds player_id placeholders to event_text.
 
 ---
 
-### FEAT-9 — Weekly digest card on team page
+### FEAT-9 — Weekly digest card on team page — **ABANDONED 2026-04-29**
+
+**Status:** abandoned · **Blocks:** none
+
+**Why abandoned:** Replaced by FEAT-30 (storylines block on team
+page) — daily 3–5 bullets reads as more "alive" than the weekly
+paragraph card this ticket described. Moves the team-page narrative
+slot from a once-a-week reflection to a daily forward-looking thread.
+DERIV-6 / DERIV-7 / `gold_weekly_digest` are retired alongside.
+
+(Original ticket body preserved below for context.)
+
+### FEAT-9 (original, now retired) — Weekly digest card on team page
 
 **Lane:** client + server
 **Status:** blocked by: DERIV-7 · **Blocks:** none
@@ -4442,26 +4485,30 @@ After derivations, these light up:
 
 Also parallel-safe (each hits a different route + component).
 
-### Wave 5 — "the team-page digest"
+### Wave 5 — "the team-page narrative thread"
 
-- DERIV-7 (per-team weekly digest pipeline) — must land before FEAT-9.
-- FEAT-9 (weekly digest on team page) — needs DERIV-7.
-- FEAT-12 (player hyperlinks in recap text) — can be done anytime;
-  slot when there's appetite.
+- DERIV-11 (daily storylines pipeline) — must land before FEAT-30.
+  Replaces the abandoned DERIV-6/7 weekly-digest path.
+- FEAT-30 (storylines block on team page) — needs DERIV-11.
+- FEAT-12 (player hyperlinks in recap text) — independent; can land
+  any time.
 
-(ARCH-2 and ARCH-5 abandoned — see ticket headers. FEAT-8 and
-FEAT-19 merged to main during Wave 4 review cycle.)
+(ARCH-2/5 + DERIV-6/7 + FEAT-9 abandoned — see ticket headers.
+FEAT-8 and FEAT-19 merged to main during Wave 4 review cycle.)
 
 ### Wave 6+ — "stubs awaiting flesh-out"
 
 Stubs added 2026-04-29; bodies are intentionally light, fill in when
 ready to dispatch.
 
-- DERIV-8 (deprecate orphan gold tables) — FEAT-5/6/7 cleanup. Quick
-  pipeline-side change; agent prompt requires per-table user confirm.
+- DERIV-8 (deprecate orphan gold tables) — FEAT-5/6/7/9 cleanup.
+  Now also covers `gold_weekly_digest` since DERIV-6/FEAT-9 retired.
+  Pipeline-side change; agent prompt requires per-table user confirm.
 - DERIV-9 (recap LLM enrichment with real-world news) — biggest of
   the bunch; ties to the long-running "scrape news for recap context"
   idea in `make_it_impressive.md`.
+- DERIV-10 → FEAT-29 (Jon-Bois WPA arc chart on recap cards).
+- DERIV-12 → FEAT-31 (series recap roll-up on News page).
 - PIPE-5 (sportsbook odds — replace / augment Elo) — pipeline +
   schema work; downstream surface ticket TBD.
 - FEAT-18 (trajectory window zoom) — moved here from Wave 5 since
@@ -4469,6 +4516,9 @@ ready to dispatch.
 - FEAT-20 (animate prior-year comparison line)
 - FEAT-21 (matchup panel load time)
 - FEAT-22 (matchup spark plots: stop the snap-in)
+- FEAT-28 (refresh "?" help overlay)
+- ARCH-6..13, FEAT-23..27 — server hygiene + UX polish, see ticket
+  bodies for the cleanup-pass details.
 
 ---
 
