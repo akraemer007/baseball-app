@@ -5,6 +5,8 @@ import type {
   Division,
   GameSummaryResponse,
   LeagueResponse,
+  MatchupResponse,
+  PitcherDistributionEntry,
   PlayerResponse,
   ProjectionsResponse,
   RecapsResponse,
@@ -531,8 +533,11 @@ export function getRecapsDays(days: number, anchor?: string) {
 }
 
 export function getProjections(): ProjectionsResponse {
+  // CT-anchored so the rollover lines up with what the real query
+  // returns; otherwise the mock and warehouse paths drift apart at
+  // 11 PM CT (midnight ET).
   const today = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
+    timeZone: 'America/Chicago',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -582,5 +587,90 @@ export function getGameSummary(gamePk: number): GameSummaryResponse {
     losingPitcher: { id: '1', name: 'Mock L. Pitcher' },
     topPerformer: { id: '2', name: 'Mock Slugger', line: '3-for-4, HR, 2 RBI' },
     boxScoreUrl: `https://baseballsavant.mlb.com/gamefeed?gamePk=${gamePk}&hf=boxScore`,
+  };
+}
+
+// ---- Matchup preview (FEAT-1) ---------------------------------------------
+
+/** Deterministic mock for GET /api/matchup/:gamePk. Mirrors the shape the
+ *  real warehouse query returns so the client can be exercised without UC. */
+export function getMockMatchup(gamePk: number): MatchupResponse {
+  const rand = mulberry32(gamePk + 7);
+  const teams = Object.values(TEAMS);
+  const home = teams[Math.floor(rand() * teams.length)];
+  let away = teams[Math.floor(rand() * teams.length)];
+  if (away.id === home.id) away = teams[(Math.floor(rand() * teams.length) + 1) % teams.length];
+
+  const mockPitcher = (teamAbbrev: string, idx: number) => ({
+    id: `p-${teamAbbrev}-sp${idx}`,
+    name: `Pitcher ${teamAbbrev}-${idx}`,
+    era: Number((2.5 + rand() * 3).toFixed(2)),
+    k9: Number((6 + rand() * 6).toFixed(2)),
+    fip: Number((3 + rand() * 2).toFixed(2)),
+    splits: null,
+  });
+  const mockHitters = (teamAbbrev: string) =>
+    Array.from({ length: 3 }).map((_, i) => {
+      const avg = 0.22 + rand() * 0.13;
+      const obp = avg + 0.03 + rand() * 0.07;
+      const slg = avg + 0.12 + rand() * 0.15;
+      return {
+        id: `b-${teamAbbrev}-${i + 1}`,
+        name: `Hitter ${teamAbbrev}-${i + 1}`,
+        last10Avg: Number(avg.toFixed(3)),
+        last10Obp: Number(obp.toFixed(3)),
+        last10Slg: Number(slg.toFixed(3)),
+        last10Ops: Number((obp + slg).toFixed(3)),
+        gamesUsed: 10,
+      };
+    });
+
+  // Build a small mock distribution out of every team — enough to make the
+  // strip plot non-degenerate when running without UC.
+  const mockDist = (
+    statKey: 'era' | 'k_per_9' | 'fip',
+    label: string,
+    lowerIsBetter: boolean,
+  ) => {
+    const entries: PitcherDistributionEntry[] = teams.map((t, i) => {
+      const base =
+        statKey === 'era'
+          ? 3 + rand() * 2.5
+          : statKey === 'k_per_9'
+            ? 7 + rand() * 4
+            : 3.2 + rand() * 1.8;
+      return {
+        pitcherId: `p-${t.id}-sp1`,
+        pitcherName: `Pitcher ${t.id}-1`,
+        teamAbbrev: t.id,
+        teamColor: t.color,
+        value: Number(base.toFixed(2)),
+        rank: i + 1,
+      };
+    });
+    entries.sort((a, b) => (lowerIsBetter ? a.value - b.value : b.value - a.value));
+    entries.forEach((e, i) => (e.rank = i + 1));
+    const mean = Number(
+      (entries.reduce((s, e) => s + e.value, 0) / entries.length).toFixed(2),
+    );
+    return { statKey, statLabel: label, lowerIsBetter, leagueMean: mean, entries };
+  };
+
+  return {
+    gameId: String(gamePk),
+    homeTeamId: home.id,
+    awayTeamId: away.id,
+    pitcher: { home: mockPitcher(home.id, 1), away: mockPitcher(away.id, 1) },
+    topHitters: { home: mockHitters(home.id), away: mockHitters(away.id) },
+    h2hRecord: {
+      homeWins: Math.floor(rand() * 5),
+      awayWins: Math.floor(rand() * 5),
+      lastGameDate: '2026-04-14',
+    },
+    pitcherLeague: {
+      era: mockDist('era', 'ERA', true),
+      k9: mockDist('k_per_9', 'K/9', false),
+      fip: mockDist('fip', 'FIP', true),
+    },
   };
 }

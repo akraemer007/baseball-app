@@ -64,6 +64,10 @@ export interface StatDistributionEntry {
   teamColor: string;
   value: number;
   rank: number;
+  /** Optional click target: when set, the chart opens this URL on dot
+   *  click instead of navigating to the team page. Used by FEAT-1's
+   *  pitcher spark plots so the dot links to Savant. */
+  entryHref?: string;
 }
 
 export interface StatDistributionResponse {
