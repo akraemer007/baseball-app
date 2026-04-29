@@ -183,6 +183,20 @@ export default function TeamPage() {
     return { team: resolved.team, trajectory: traj };
   }, [comparisonTeam, leagueQ.data, teamId]);
 
+  // Click handler for percentile-row dots: toggle the comparison team
+  // in place rather than navigating away. Clicking the current team's
+  // dot is a no-op (you can't compare yourself); clicking the dot of
+  // the team currently selected for comparison clears it.
+  const handleSelectCompareTeam = (abbrev: string) => {
+    const upper = abbrev.toUpperCase();
+    if (upper === teamId.toUpperCase()) return;
+    if (comparisonTeam && upper === comparisonTeam.toUpperCase()) {
+      setComparisonTeam(null);
+    } else {
+      setComparisonTeam(abbrev);
+    }
+  };
+
   // One bulk fetch covers every PercentileRow's strip-plot. Replaces the old
   // per-row useQuery (~15 parallel GETs) with a single round-trip seeded at
   // the page level. Sorted statKeys keep the cache key stable across renders
@@ -479,6 +493,7 @@ export default function TeamPage() {
                   onToggle={() =>
                     setExpandedStat(expandedStat === s.statKey ? null : s.statKey)
                   }
+                  onSelectComparison={handleSelectCompareTeam}
                 />
               ))}
             </div>
@@ -514,6 +529,7 @@ export default function TeamPage() {
                           expandedStat === s.statKey ? null : s.statKey,
                         )
                       }
+                      onSelectComparison={handleSelectCompareTeam}
                     />
                   ))}
                 </div>
@@ -670,6 +686,7 @@ function PercentileRow({
   distribution,
   isOpen,
   onToggle,
+  onSelectComparison,
 }: {
   stat: PercentileStat;
   season: number;
@@ -689,6 +706,11 @@ function PercentileRow({
   distribution: StatDistributionResponse | undefined;
   isOpen: boolean;
   onToggle: () => void;
+  /** Click handler for any non-current dot in the strip plot — sets that
+   *  team as the comparison (or clears, when the same dot is clicked
+   *  twice). The page wires this to its `setComparisonTeam` setter so
+   *  the click stays in-page rather than navigating to /team/:abbrev. */
+  onSelectComparison: (abbrev: string) => void;
 }) {
   // 30-team distribution arrives via the page-level bulk fetch (one network
   // round-trip for all percentile rows). Alias for the existing `data`
@@ -832,6 +854,7 @@ function PercentileRow({
               comparisonTeamAbbrev={comparisonTeam?.abbrev ?? null}
               xDomain={sharedDomain}
               detail={isOpen ? 'full' : 'spark'}
+              onTeamSelect={onSelectComparison}
             />
           );
         })()}

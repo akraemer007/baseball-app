@@ -43,6 +43,12 @@ interface Props {
    */
   detail?: 'spark' | 'full';
   height?: number;
+  /** Override the default dot click behavior. When provided (and the
+   *  entry has no `entryHref`), a click invokes this callback instead
+   *  of navigating to the team page. Used by the team page to set the
+   *  comparison team in-place — clicking a dot pulls that team into
+   *  the side-by-side overlay rather than yanking the user away. */
+  onTeamSelect?: (abbrev: string) => void;
 }
 
 type FeatureKind = 'current' | 'comparison' | 'primary' | 'secondary' | null;
@@ -66,6 +72,7 @@ export function StatDistributionChart({
   xDomain,
   detail = 'full',
   height,
+  onTeamSelect,
 }: Props) {
   const navigate = useNavigate();
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -294,6 +301,8 @@ export function StatDistributionChart({
                     ev.stopPropagation();
                     if (e.entryHref) {
                       window.open(e.entryHref, '_blank', 'noopener,noreferrer');
+                    } else if (onTeamSelect) {
+                      onTeamSelect(e.teamAbbrev);
                     } else {
                       navigate(`/team/${e.teamAbbrev}`);
                     }
