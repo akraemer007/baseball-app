@@ -473,12 +473,15 @@ if storyline_rows:
     # Postgres-portable upsert: delete the (team_id, generated_for_date)
     # keys we're about to write (handles re-runs that produce a different
     # bullet count), then insert. MERGE works on Delta but not on plain
-    # Postgres; this two-step is portable.
-    keys = sorted({(r["team_id"], r["generated_for_date"]) for r in storyline_rows})
-    keys_csv = ", ".join(f"({tid}, DATE '{d}')" for tid, d in keys)
+    # Postgres; this two-step is portable. All rows in a single run share
+    # one target_date, so we flatten to `date = X AND team_id IN (...)` —
+    # avoids Spark's row-tuple IN type-coercion gotcha (INT vs BIGINT).
+    team_ids = sorted({int(r["team_id"]) for r in storyline_rows})
+    team_ids_csv = ", ".join(str(t) for t in team_ids)
     spark.sql(f"""
         DELETE FROM {fq}.gold_team_storyline
-        WHERE (team_id, generated_for_date) IN ({keys_csv})
+        WHERE generated_for_date = DATE '{target_date.isoformat()}'
+          AND team_id IN ({team_ids_csv})
     """)
     spark.sql(f"""
         INSERT INTO {fq}.gold_team_storyline
