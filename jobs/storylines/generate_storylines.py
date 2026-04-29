@@ -45,7 +45,7 @@ only_teams_param = dbutils.widgets.get("only_teams").strip()
 dry_run = dbutils.widgets.get("dry_run").lower() == "true"
 fq = f"{catalog}.{schema}"
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 MODEL_VERSION = f"{endpoint}:{PROMPT_VERSION}"
 TITLE_FALLBACK = "Two-week summary"
 
@@ -117,18 +117,20 @@ spark.sql(f"""
         bullet_text              STRING,
         supporting_metrics_json  STRING,
         generated_at             TIMESTAMP,
-        title                    STRING
+        title                    STRING,
+        prose                    STRING
     ) USING DELTA
 """)
-# Idempotent ALTER for tables created before v2; Delta no-ops if the
-# column already exists.
-try:
-    spark.sql(
-        f"ALTER TABLE {fq}.gold_team_storyline ADD COLUMNS (title STRING)"
-    )
-except Exception as exc:  # noqa: BLE001
-    if "already exists" not in str(exc).lower():
-        raise
+# Idempotent ALTER for tables created before v2/v3; Delta no-ops if the
+# column already exists. v2 added title; v3 adds prose.
+for col_name, col_type in (("title", "STRING"), ("prose", "STRING")):
+    try:
+        spark.sql(
+            f"ALTER TABLE {fq}.gold_team_storyline ADD COLUMNS ({col_name} {col_type})"
+        )
+    except Exception as exc:  # noqa: BLE001
+        if "already exists" not in str(exc).lower():
+            raise
 
 if not force:
     existing = spark.sql(f"""
@@ -278,6 +280,14 @@ def fetch_rolling_batting(team_id: int) -> list[dict]:
     return [
         {
             "player_name": str(r["player_name"]),
+            # Pre-formatted stat line — the LLM is instructed to quote
+            # this verbatim instead of reassembling from the raw fields,
+            # which previously produced "3-for-43" by confusing HR with
+            # hits. The raw fields are kept for reference + cost reasons.
+            "stat_line": (
+                f"{int(r['hits'] or 0)}-for-{int(r['at_bats'] or 0)}, "
+                f"{int(r['home_runs'] or 0)} HR, {int(r['rbi'] or 0)} RBI"
+            ),
             "games": int(r["games"]),
             "at_bats": int(r["at_bats"] or 0),
             "hits": int(r["hits"] or 0),
@@ -321,22 +331,33 @@ def fetch_rolling_pitching(team_id: int) -> list[dict]:
         axis=1,
     )
     df = df.sort_values("era", ascending=True).head(TOP_N_PIT)
-    return [
-        {
+    out = []
+    for _, r in df.iterrows():
+        ip = round(float(r["innings_pitched"] or 0), 1)
+        wins = int(r["wins"] or 0)
+        losses = int(r["losses"] or 0)
+        era = round(float(r["era"]), 2)
+        ks = int(r["strikeouts"] or 0)
+        # Pre-formatted stat line — same rationale as the batter side.
+        # If the pitcher recorded a save without a W/L, lead with the
+        # save count to communicate the role.
+        record = f"{wins}-{losses}"
+        stat_line = f"{record}, {era:.2f} ERA, {ks} K in {ip} IP"
+        out.append({
             "player_name": str(r["player_name"]),
+            "stat_line": stat_line,
             "games": int(r["games"]),
-            "innings_pitched": round(float(r["innings_pitched"] or 0), 1),
+            "innings_pitched": ip,
             "earned_runs": int(r["earned_runs"] or 0),
-            "strikeouts": int(r["strikeouts"] or 0),
+            "strikeouts": ks,
             "walks": int(r["walks"] or 0),
             "home_runs": int(r["home_runs"] or 0),
-            "wins": int(r["wins"] or 0),
-            "losses": int(r["losses"] or 0),
+            "wins": wins,
+            "losses": losses,
             "saves": int(r["saves"] or 0),
-            "era": round(float(r["era"]), 2),
-        }
-        for _, r in df.iterrows()
-    ]
+            "era": era,
+        })
+    return out
 
 
 def assemble_payload(team_row) -> dict:
@@ -371,7 +392,7 @@ for _, team_row in target_teams.iterrows():
 # MAGIC %md ## Writer LLM call (one per team)
 
 # COMMAND ----------
-PROMPT_PATH = Path(os.getcwd()) / "prompts" / "team_storyline_v2.md"
+PROMPT_PATH = Path(os.getcwd()) / "prompts" / "team_storyline_v3.md"
 system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
 
 
@@ -409,20 +430,17 @@ def call_writer(payload: dict) -> dict:
     return parsed
 
 
-def normalize_bullets(parsed: dict) -> list[dict]:
-    """Validate the writer's JSON shape. Drop anything malformed; keep
-    3–5 bullets max. Returns list of {text, metric_ref}."""
-    raw = parsed.get("bullets") or []
-    out: list[dict] = []
-    for b in raw:
-        if not isinstance(b, dict):
-            continue
-        text = (b.get("text") or "").strip()
-        if not text:
-            continue
-        metric_ref = (b.get("metric_ref") or "").strip()[:64]
-        out.append({"text": text, "metric_ref": metric_ref})
-    return out[:5]
+def normalize_prose(parsed: dict) -> str:
+    """v3: writer returns a single `prose` paragraph. Strip leading/
+    trailing whitespace, cap defensively at 2000 chars (typical output
+    is 600-900 chars). Empty prose is the caller's signal to skip."""
+    raw = (parsed.get("prose") or "").strip()
+    if not raw:
+        return ""
+    # Collapse any accidental newlines in the middle of the paragraph;
+    # the prompt asks for one block but Haiku occasionally inserts a \n.
+    raw = " ".join(raw.split())
+    return raw[:2000]
 
 
 def normalize_title(parsed: dict) -> str:
@@ -459,25 +477,27 @@ for team_id, abbrev, payload in payloads:
         usage = parsed.pop("_usage", {"input_tokens": 0, "output_tokens": 0})
         total_in_tok += usage["input_tokens"]
         total_out_tok += usage["output_tokens"]
-        bullets = normalize_bullets(parsed)
+        prose = normalize_prose(parsed)
         title = normalize_title(parsed)
-        if not bullets:
-            failures.append((abbrev, "writer returned 0 bullets"))
-            print(f"  {abbrev}: 0 bullets — skipping")
+        if not prose:
+            failures.append((abbrev, "writer returned empty prose"))
+            print(f"  {abbrev}: empty prose — skipping")
             continue
-        for idx, b in enumerate(bullets):
-            storyline_rows.append({
-                "team_id": team_id,
-                "generated_for_date": target_date.isoformat(),
-                "bullet_index": idx,
-                "bullet_text": b["text"],
-                "supporting_metrics_json": json.dumps(
-                    {"metric_ref": b["metric_ref"]}
-                ),
-                "generated_at": generated_at,
-                "title": title,
-            })
-        print(f"  {abbrev}: {len(bullets)} bullets — {title!r}")
+        # v3 stores one row per (team, date). bullet_index/bullet_text
+        # are kept for legacy schema compatibility (bullet_text holds
+        # the prose; the new `prose` column does too — server reads
+        # `prose` going forward).
+        storyline_rows.append({
+            "team_id": team_id,
+            "generated_for_date": target_date.isoformat(),
+            "bullet_index": 0,
+            "bullet_text": prose,
+            "supporting_metrics_json": "{}",
+            "generated_at": generated_at,
+            "title": title,
+            "prose": prose,
+        })
+        print(f"  {abbrev}: {len(prose)} chars — {title!r}")
     except Exception as exc:  # noqa: BLE001
         failures.append((abbrev, f"{type(exc).__name__}: {exc}"))
         print(f"  {abbrev} failed: {type(exc).__name__}: {exc}")
@@ -515,7 +535,7 @@ if storyline_rows:
     spark.sql(f"""
         INSERT INTO {fq}.gold_team_storyline
         (team_id, generated_for_date, bullet_index, bullet_text,
-         supporting_metrics_json, generated_at, title)
+         supporting_metrics_json, generated_at, title, prose)
         SELECT
             CAST(team_id AS BIGINT),
             CAST(generated_for_date AS DATE),
@@ -523,12 +543,13 @@ if storyline_rows:
             bullet_text,
             supporting_metrics_json,
             generated_at,
-            title
+            title,
+            prose
         FROM storyline_stage
     """)
     teams_written = len({r["team_id"] for r in storyline_rows})
     print(
-        f"gold_team_storyline: wrote {len(storyline_rows)} bullets across "
+        f"gold_team_storyline: wrote {len(storyline_rows)} prose row(s) across "
         f"{teams_written} team(s) for {target_date}"
     )
 
@@ -572,6 +593,6 @@ if __name__ == "__main__":
             "rolling_batting_14d": [],
             "rolling_pitching_14d": [],
         }
-        prompt_path = Path(__file__).parent / "prompts" / "team_storyline_v2.md"
+        prompt_path = Path(__file__).parent / "prompts" / "team_storyline_v3.md"
         print("prompt bytes:", len(prompt_path.read_text()))
         print("payload json:", json.dumps(sample_payload))

@@ -1,13 +1,13 @@
 // FEAT-30 — Storylines block on the team page.
 //
-// Renders DERIV-11's `gold_team_storyline` bullets inside a `.card`
-// frame styled to match TeamMilestones: 3px team-color left border,
-// page-level primary-team tint inherited via --primary-team-accent-rgb,
-// system-sans typography. The LLM-generated `title` takes the bold
-// "headline" slot (where milestones bold the player name); the bullets
-// stack underneath as the dim body. Section h2 stays static at
-// "Two-week summary" + an optional dim "· Apr 28" dateline when the
-// LLM job hasn't refreshed today's set.
+// Renders DERIV-11's `gold_team_storyline` paragraph (prompt v3) inside
+// a `.card` frame styled to match TeamMilestones: 3px team-color left
+// border, page-level primary-team tint inherited via
+// --primary-team-accent-rgb, system-sans typography. The LLM-generated
+// `title` takes the bold "headline" slot (where milestones bold the
+// player name); the prose paragraph sits underneath as the body.
+// Section h2 stays static at "Two-week summary" + an optional dim
+// "· Apr 28" dateline when the LLM job hasn't refreshed today's row.
 //
 // Empty payload, error, or undefined data → render null (the section
 // + card both disappear). Server-side already caps staleness at 3
@@ -60,12 +60,12 @@ export function TeamStorylines({ teamId, teamColor }: Props) {
 
   // Hide silently on loading/error/empty. No "loading…" placeholder,
   // no error UI — the page reads cleaner when the section just isn't
-  // there until the LLM job has bullets to share.
-  if (!storylinesQ.data || storylinesQ.data.bullets.length === 0) {
+  // there until the LLM job has prose to share.
+  if (!storylinesQ.data || !storylinesQ.data.prose) {
     return null;
   }
 
-  const { generatedForDate, title, bullets, players } = storylinesQ.data;
+  const { generatedForDate, title, prose, players } = storylinesQ.data;
   const isStale = !!generatedForDate && generatedForDate < todayUtc();
   const headlineText = title?.trim() || 'Two-week summary';
 
@@ -85,11 +85,7 @@ export function TeamStorylines({ teamId, teamColor }: Props) {
         style={{ borderLeft: `3px solid ${teamColor}` }}
       >
         <div className="team-storylines-headline">{headlineText}</div>
-        <ul className="team-storylines-bullets">
-          {bullets.map((b, i) => (
-            <li key={i}>{renderRecapText(b.text, players)}</li>
-          ))}
-        </ul>
+        <p className="team-storylines-prose">{renderRecapText(prose, players)}</p>
       </div>
     </section>
   );

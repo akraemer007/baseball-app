@@ -253,7 +253,7 @@ export default function LeaguePage() {
                   <ul className="standings-list">
                     {ranked.map((t) => {
                       const story = storylines[t.abbrev];
-                      const hasStory = !!story && story.bullets.length > 0;
+                      const hasStory = !!story && !!story.prose;
                       return (
                         <li
                           key={t.teamId}
@@ -289,9 +289,7 @@ export default function LeaguePage() {
                               <div className="standings-storyline-tip-title">
                                 {story.title}
                               </div>
-                              {story.bullets.map((b, i) => (
-                                <p key={i}>{b.text}</p>
-                              ))}
+                              <p>{story.prose}</p>
                             </div>
                           )}
                         </li>

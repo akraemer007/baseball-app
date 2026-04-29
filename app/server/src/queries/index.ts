@@ -958,16 +958,18 @@ interface TeamStorylineRow {
   bullet_index: number;
   bullet_text: string;
   title: string | null;
+  prose: string | null;
 }
 
 /**
- * Pull this team's most-recent storyline bullets from
- * `gold_team_storyline` (DERIV-11).
+ * Pull this team's most-recent storyline paragraph from
+ * `gold_team_storyline` (DERIV-11, prompt v3 — long-form prose).
  *
- * The job runs hourly and is gated on (team_id, generated_for_date) so
- * a team's bullets are atomic for a given day. We pick the single
- * most-recent date that has rows for this team, and return that day's
- * bullets in `bullet_index` order.
+ * v3 stores one row per (team_id, generated_for_date) with the
+ * paragraph in `prose`. Legacy v1/v2 rows had multiple bullets;
+ * for those we concatenate `bullet_text` across rows as a fallback
+ * so existing data still renders something sensible during
+ * migration. After the next league-wide regen everything is v3.
  *
  * Stale-cap: if `MAX(generated_for_date)` is more than 3 days old, the
  * LLM job is presumed broken and we return an empty payload — better a
@@ -990,7 +992,8 @@ export async function getStorylinesForTeamFromWarehouse(
      SELECT CAST(s.generated_for_date AS STRING) AS generated_for_date,
             s.bullet_index,
             s.bullet_text,
-            s.title
+            s.title,
+            s.prose
        FROM gold_team_storyline s
        JOIN team_row t ON t.team_id = s.team_id
        JOIN latest    l ON l.d       = s.generated_for_date
@@ -1000,16 +1003,22 @@ export async function getStorylinesForTeamFromWarehouse(
   );
 
   if (rows.length === 0) {
-    return { generatedForDate: '', title: '', bullets: [] };
+    return { generatedForDate: '', title: '', prose: '' };
   }
 
   const players = await fetchTeamRosterPlayers(safeAbbrev);
   const title = (rows[0].title || '').trim() || 'Two-week summary';
+  // v3 row has prose populated; legacy rows fall back to concatenating
+  // the bullets into one paragraph so the section still renders during
+  // the migration window. Empty prose → empty response.
+  const prose =
+    (rows[0].prose || '').trim() ||
+    rows.map((r) => r.bullet_text).filter(Boolean).join(' ');
 
   return {
     generatedForDate: rows[0].generated_for_date,
     title,
-    bullets: rows.map((r) => ({ text: r.bullet_text })),
+    prose,
     ...(Object.keys(players).length > 0 ? { players } : {}),
   };
 }
@@ -1068,19 +1077,20 @@ interface LeagueStorylineRow {
   bullet_index: number;
   bullet_text: string;
   title: string | null;
+  prose: string | null;
 }
 
-/** All 30 teams' most-recent storyline sets in one round trip — drives
- *  the standings hover tooltip on the league page so we don't fire 30
- *  /api/team/:abbrev/storylines requests when the user lands on the
- *  page. Same 3-day staleness cap as the per-team endpoint.
+/** All 30 teams' most-recent storyline paragraph in one round trip —
+ *  drives the standings hover tooltip on the league page so we don't
+ *  fire 30 /api/team/:abbrev/storylines requests when the user lands
+ *  on the page. Same 3-day staleness cap as the per-team endpoint.
  *
  *  Players (the FEAT-12-style mention map) are intentionally NOT
  *  included. The tooltip is a hover preview, not a click target —
  *  inline links there would compete for the click and the hover would
- *  steal focus. Bullets render as plain text. */
+ *  steal focus. Prose renders as plain text. */
 export async function getLeagueStorylinesFromWarehouse(): Promise<
-  Record<string, { generatedForDate: string; title: string; bullets: { text: string }[] }>
+  Record<string, { generatedForDate: string; title: string; prose: string }>
 > {
   const rows = await query<LeagueStorylineRow>(
     `WITH latest_per_team AS (
@@ -1092,7 +1102,8 @@ export async function getLeagueStorylinesFromWarehouse(): Promise<
             CAST(s.generated_for_date AS STRING)  AS generated_for_date,
             s.bullet_index,
             s.bullet_text,
-            s.title
+            s.title,
+            s.prose
        FROM gold_team_storyline s
        JOIN latest_per_team l
          ON l.team_id = s.team_id
@@ -1102,17 +1113,31 @@ export async function getLeagueStorylinesFromWarehouse(): Promise<
       ORDER BY t.abbrev, s.bullet_index`,
   );
 
-  const out: Record<string, { generatedForDate: string; title: string; bullets: { text: string }[] }> = {};
+  // Group by abbrev. v3 rows have prose populated and one row per team;
+  // v1/v2 rows fall back to concatenating bullet_text across rows.
+  const grouped = new Map<string, TeamStorylineRow[]>();
+  const dateByAbbrev = new Map<string, string>();
+  const titleByAbbrev = new Map<string, string>();
   for (const r of rows) {
     const abbrev = r.team_abbrev;
-    if (!out[abbrev]) {
-      out[abbrev] = {
-        generatedForDate: r.generated_for_date,
-        title: (r.title || '').trim() || 'Two-week summary',
-        bullets: [],
-      };
+    if (!grouped.has(abbrev)) {
+      grouped.set(abbrev, []);
+      dateByAbbrev.set(abbrev, r.generated_for_date);
+      titleByAbbrev.set(abbrev, (r.title || '').trim() || 'Two-week summary');
     }
-    out[abbrev].bullets.push({ text: r.bullet_text });
+    grouped.get(abbrev)!.push(r);
+  }
+
+  const out: Record<string, { generatedForDate: string; title: string; prose: string }> = {};
+  for (const [abbrev, teamRows] of grouped) {
+    const prose =
+      (teamRows[0].prose || '').trim() ||
+      teamRows.map((r) => r.bullet_text).filter(Boolean).join(' ');
+    out[abbrev] = {
+      generatedForDate: dateByAbbrev.get(abbrev) || '',
+      title: titleByAbbrev.get(abbrev) || 'Two-week summary',
+      prose,
+    };
   }
   return out;
 }
