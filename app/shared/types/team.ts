@@ -80,3 +80,14 @@ export interface TeamResponse {
   recentGames: GameSummary[];
   upcomingGames: ScheduledGame[];
 }
+
+// MilestoneEvent lives in recap.ts (FEAT-19 landed first; both surfaces
+// consume the same shape). Re-imported here only as needed.
+import type { MilestoneEvent } from './recap';
+
+export interface TeamMilestonesResponse {
+  teamId: string;
+  /** Up to 3 events, sorted by rarity then recency. Empty array → caller
+   *  should hide the section entirely (no "no milestones" placeholder). */
+  milestones: MilestoneEvent[];
+}

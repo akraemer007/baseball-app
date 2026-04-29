@@ -1079,6 +1079,63 @@ table.stat-table td.top-performer {
 .pill.game-type-pitching_duel { background: #e0eaff; color: #1d3a8a; }
 .pill.game-type-blowout { background: #ebebeb; color: #4a4a4a; }
 
+/* Milestone callout chips (FEAT-8). Same pastel-bg / dark-text family
+ * as the game-type chips above, picked from neighboring hue bands so
+ * the three milestone kinds are visually distinct from each other AND
+ * from the recap chips. Same .pill base = same px / weight / padding. */
+.pill.milestone-team-streak { background: #e3f3e1; color: #2c5e26; }
+.pill.milestone-hit-streak  { background: #f1e6f7; color: #4a2270; }
+.pill.milestone-multi-hr    { background: #ffe2cf; color: #8a3b00; }
+
+/* FEAT-8 — milestone callouts on the team page. Each milestone is its
+ * own .card; the section is a vertical stack of them. Two-line layout:
+ * subject name (bold, larger) on top, descriptor (dim, smaller) below.
+ * 3px team-color left border (set inline) frames each card. The kind
+ * pill sits on the far right, vertically centered. */
+.milestone-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.milestone-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.55rem 1rem 0.55rem 0.9rem;
+  border-left: 3px solid var(--border);
+}
+.milestone-content {
+  flex: 1;
+  min-width: 0;
+}
+.milestone-headline {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 0.1rem;
+  /* Softened off pure --text — same blend as the muted h3 titles
+     ("Batting vs MLB") use, but a touch darker so the name still
+     stands above the --text-dim body line. */
+  color: color-mix(in srgb, var(--text) 80%, var(--text-dim));
+}
+.milestone-body {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  line-height: 1.3;
+}
+.milestone-player-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted transparent;
+}
+.milestone-player-link:hover {
+  border-bottom-color: var(--text-dim);
+}
+.milestone-pill {
+  flex-shrink: 0;
+  align-self: center;
+}
+
 /* Primary / secondary team tags — color comes inline from the team. */
 .pill.team-tag {
   font-weight: 700;

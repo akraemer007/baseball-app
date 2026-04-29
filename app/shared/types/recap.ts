@@ -13,11 +13,13 @@ export interface MilestoneEvent {
   /** team_id for team subjects, player_id (MLBAM) for player subjects. */
   subjectId: string;
   subjectName: string;
+  /** Maps 1:1 with the three classifiers in build_gold.sql.
+   *  Tightened to the literal union so consumers (FEAT-8 team page) can
+   *  exhaustively switch on it without a default branch. */
   eventKind:
     | 'team_winning_streak'
     | 'player_hitting_streak'
-    | 'player_multi_hr_game'
-    | (string & {});
+    | 'player_multi_hr_game';
   /** Pre-rendered narrative sentence. Player names are plain text — the
    *  client wraps the player name in a Savant link via string replace. */
   eventText: string;
