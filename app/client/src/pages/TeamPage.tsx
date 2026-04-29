@@ -57,21 +57,24 @@ const STAT_ORDER: Record<string, number> = {
   slg: 3,
   ops: 4,
   ops_plus: 5,
+  woba: 6,
+  xwoba: 7,
+  xba: 8,
   // Batting counts + per-game rates (column 2 on desktop)
-  hits_total: 6,
-  hr_total: 7,
-  walks_total: 8,
-  runs_per_game: 9,
-  hr_per_game: 10,
+  hits_total: 9,
+  hr_total: 10,
+  walks_total: 11,
+  runs_per_game: 12,
+  hr_per_game: 13,
   // Pitching — rates first, totals after
-  era: 11,
-  era_minus: 12,
-  fip: 13,
-  k_per_9: 14,
-  strikeouts_pitching_total: 15,
+  era: 14,
+  era_minus: 15,
+  fip: 16,
+  k_per_9: 17,
+  strikeouts_pitching_total: 18,
   // Other
-  run_diff: 16,
-  errors_per_game: 17,
+  run_diff: 19,
+  errors_per_game: 20,
 };
 
 const STAT_DEFINITIONS: Record<string, string> = {
@@ -85,6 +88,9 @@ const STAT_DEFINITIONS: Record<string, string> = {
   slg: 'Slugging percentage. Total bases ÷ at-bats. Measures raw power; a triple is worth 3, a homer 4.',
   ops: 'On-base plus slugging (OBP + SLG). A rough one-number measure of a hitter’s total offense.',
   ops_plus: 'OPS indexed to league average where 100 = league average. 120 means 20% better than average, 80 means 20% worse.',
+  xwoba: 'xwOBA — "earned" weighted on-base based on contact quality. Good for spotting regression candidates.',
+  woba: 'wOBA — weighted on-base average.',
+  xba: 'xBA — expected batting average from contact quality.',
   era: 'Earned runs allowed per 9 innings pitched. Lower is better.',
   era_minus: 'ERA indexed to league average where 100 = league average. Lower is better: 85 means 15% better than the average staff.',
   fip: 'Fielding-Independent Pitching. Like ERA but only counts home runs, walks, and strikeouts — the outcomes a pitcher most controls.',
@@ -392,13 +398,28 @@ export default function TeamPage() {
 
       <h2 style={{ marginTop: '1.25rem', marginBottom: '0.5rem' }}>Stats</h2>
       {(['batting', 'pitching', 'fielding'] as const).map((cat) => {
-        const rows = percentileStats
+        const allRows = percentileStats
           .filter((s) => s.category === cat)
           .sort(
             (a, b) =>
               (STAT_ORDER[a.statKey] ?? 999) - (STAT_ORDER[b.statKey] ?? 999),
           );
-        if (!rows.length) return null;
+        // Hold the three contact-quality stats out of the main 2-col
+        // grid so the rates-left / totals-right symmetry survives the
+        // addition. They render as a horizontal "Advanced" sub-row
+        // below the main grid in the explicit order xba → woba → xwoba.
+        const ADVANCED_BATTING = ['xba', 'woba', 'xwoba'] as const;
+        const isAdvanced = (key: string): boolean =>
+          cat === 'batting' &&
+          (ADVANCED_BATTING as readonly string[]).includes(key);
+        const rows = allRows.filter((s) => !isAdvanced(s.statKey));
+        const advancedRows =
+          cat === 'batting'
+            ? ADVANCED_BATTING.map((key) =>
+                allRows.find((s) => s.statKey === key),
+              ).filter((s): s is NonNullable<typeof s> => s !== undefined)
+            : [];
+        if (!rows.length && !advancedRows.length) return null;
         const scopeTag = statScope === 'league' && teamLeague ? teamLeague : 'MLB';
         return (
           <div key={cat} className="card">
@@ -458,6 +479,43 @@ export default function TeamPage() {
                 />
               ))}
             </div>
+            {advancedRows.length > 0 && (
+              <div className="advanced-stats">
+                <div className="advanced-stats-label muted mono">Advanced</div>
+                <div className="percentile-list percentile-list-advanced">
+                  {advancedRows.map((s) => (
+                    <PercentileRow
+                      key={s.statKey}
+                      stat={s}
+                      season={season}
+                      teamColor={team.color}
+                      currentTeamAbbrev={team.id}
+                      primaryTeamAbbrev={primaryTeam}
+                      secondaryTeamAbbrev={secondaryTeam}
+                      comparisonTeam={
+                        comparisonInfo
+                          ? {
+                              abbrev: comparisonInfo.team.id,
+                              name: comparisonInfo.team.name,
+                              color: comparisonInfo.team.color,
+                            }
+                          : null
+                      }
+                      scope={statScope}
+                      teamLeague={teamLeague}
+                      teamLeagueMap={teamLeagueMap}
+                      distribution={bulkDistQ.data?.distributions[s.statKey]}
+                      isOpen={expandedStat === s.statKey}
+                      onToggle={() =>
+                        setExpandedStat(
+                          expandedStat === s.statKey ? null : s.statKey,
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
