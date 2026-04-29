@@ -3,7 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiGet } from '../lib/api';
 import { usePreferences } from '../lib/preferences';
-import type { Division, LeagueResponse, TeamTrajectory } from '@shared/types';
+import type {
+  Division,
+  LeagueResponse,
+  LeagueStorylinesResponse,
+  TeamTrajectory,
+} from '@shared/types';
 import { DivisionTrajectoryChart } from '../charts/DivisionTrajectoryChart';
 import { TeamSparkline } from '../charts/TeamSparkline';
 import NewsSection from '../components/NewsSection';
@@ -81,6 +86,15 @@ export default function LeaguePage() {
     queryKey: ['league', season],
     queryFn: () => apiGet<LeagueResponse>(`/api/league/divisions?season=${season}`),
   });
+
+  // Bulk storyline fetch — drives the standings hover tooltip. Decorative;
+  // failure or empty payload simply hides the tooltip.
+  const storylinesQ = useQuery<LeagueStorylinesResponse>({
+    queryKey: ['league-storylines'],
+    queryFn: () => apiGet<LeagueStorylinesResponse>('/api/league/storylines'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const storylines = storylinesQ.data ?? {};
 
   const divisions = useMemo(() => data?.divisions ?? [], [data]);
   const trajectories = useMemo(() => data?.trajectory ?? [], [data]);
@@ -237,35 +251,52 @@ export default function LeaguePage() {
                 >
                   <h3 className="standings-head">{div.name}</h3>
                   <ul className="standings-list">
-                    {ranked.map((t) => (
-                      <li key={t.teamId} className="standings-row">
-                        <div className="standings-spark">
-                          {t.trajectory && (
-                            <TeamSparkline
-                              points={t.trajectory.points}
-                              yBound={yBound}
-                              maxGames={maxGames}
-                              width={90}
-                              height={24}
-                            />
-                          )}
-                        </div>
-                        <Link
-                          to={`/team/${t.abbrev}`}
-                          className="standings-team"
-                          onClick={(e) => e.stopPropagation()}
+                    {ranked.map((t) => {
+                      const story = storylines[t.abbrev];
+                      const hasStory = !!story && story.bullets.length > 0;
+                      return (
+                        <li
+                          key={t.teamId}
+                          className={`standings-row ${hasStory ? 'has-storyline' : ''}`}
                         >
-                          <span className="standings-rank">{t.rank}.</span>{' '}
-                          <span style={{ color: t.color }}>{t.name}</span>{' '}
-                          <span className="muted mono standings-record">
-                            {t.wins}-{t.losses}
-                          </span>{' '}
-                          <span className="muted mono standings-gb">
-                            [{formatGB(t.gamesBehind, t.rank === 1)}]
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
+                          <div className="standings-spark">
+                            {t.trajectory && (
+                              <TeamSparkline
+                                points={t.trajectory.points}
+                                yBound={yBound}
+                                maxGames={maxGames}
+                                width={90}
+                                height={24}
+                              />
+                            )}
+                          </div>
+                          <Link
+                            to={`/team/${t.abbrev}`}
+                            className="standings-team"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="standings-rank">{t.rank}.</span>{' '}
+                            <span style={{ color: t.color }}>{t.name}</span>{' '}
+                            <span className="muted mono standings-record">
+                              {t.wins}-{t.losses}
+                            </span>{' '}
+                            <span className="muted mono standings-gb">
+                              [{formatGB(t.gamesBehind, t.rank === 1)}]
+                            </span>
+                          </Link>
+                          {hasStory && (
+                            <div className="standings-storyline-tip" role="tooltip">
+                              <div className="standings-storyline-tip-title">
+                                {story.title}
+                              </div>
+                              {story.bullets.map((b, i) => (
+                                <p key={i}>{b.text}</p>
+                              ))}
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </button>
               );

@@ -27,3 +27,12 @@ export interface TeamStorylineResponse {
    *  still render as plain text either way. */
   players?: Record<string, string>;
 }
+
+/** Bulk endpoint payload (`GET /api/league/storylines`). One round trip
+ *  for every team's most-recent storyline; keyed by team abbreviation.
+ *  Drives the standings hover tooltip on the league page. Players are
+ *  intentionally absent — the tooltip is hover-only, not clickable. */
+export type LeagueStorylinesResponse = Record<
+  string,
+  Pick<TeamStorylineResponse, 'generatedForDate' | 'title' | 'bullets'>
+>;

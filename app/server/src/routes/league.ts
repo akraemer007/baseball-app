@@ -6,6 +6,7 @@ import {
   getBulkStatDistributionsFromWarehouse,
   getLeagueFromWarehouse,
   getHrRaceFromWarehouse,
+  getLeagueStorylinesFromWarehouse,
   getStatDistributionFromWarehouse,
 } from '../queries/index.js';
 
@@ -86,6 +87,20 @@ router.get('/stat-distributions', async (req, res, next) => {
       distributions[safe] = getStatDistribution(safe, resolvedSeason);
     }
     res.json({ season: resolvedSeason, distributions });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/league/storylines
+// Bulk: latest gold_team_storyline per team, keyed by team abbrev.
+// Drives the standings hover tooltip on the league page.
+router.get('/storylines', async (_req, res, next) => {
+  try {
+    const payload = config.useRealSql
+      ? await getLeagueStorylinesFromWarehouse()
+      : {};
+    res.json(payload);
   } catch (err) {
     next(err);
   }

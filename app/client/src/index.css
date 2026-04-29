@@ -359,7 +359,58 @@ table.stat-table td.top-performer {
   grid-template-columns: 90px 1fr;
   align-items: center;
   gap: 0.6rem;
+  position: relative; /* tooltip anchor */
 }
+
+/* Standings hover tooltip — shows the team's two-week storyline.
+   Pure CSS, mirrors the InfoTip pattern. Hidden by default; the
+   `.has-storyline` flag on the row gates rendering of the inner
+   element so empty teams don't reserve hover state. */
+.standings-storyline-tip {
+  position: absolute;
+  z-index: 12;
+  top: 100%;
+  left: 100px; /* line up with the text column, not the spark */
+  margin-top: 4px;
+  width: 320px;
+  background: #0a1628;
+  color: #e8eef7;
+  border: 1px solid #0a1628;
+  border-radius: 4px;
+  padding: 0.65rem 0.85rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease-out, visibility 120ms;
+}
+
+.standings-row.has-storyline:hover .standings-storyline-tip,
+.standings-row.has-storyline:focus-within .standings-storyline-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.standings-storyline-tip-title {
+  font-family: var(--sans, system-ui, sans-serif);
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: #e8eef7;
+  letter-spacing: 0.01em;
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid rgba(232, 238, 247, 0.18);
+}
+
+.standings-storyline-tip p {
+  margin: 0.3rem 0;
+}
+.standings-storyline-tip p:first-of-type { margin-top: 0; }
+.standings-storyline-tip p:last-of-type  { margin-bottom: 0; }
 
 .standings-spark {
   width: 90px;

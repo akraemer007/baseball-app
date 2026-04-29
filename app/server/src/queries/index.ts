@@ -1060,6 +1060,63 @@ async function fetchTeamRosterPlayers(
   }
 }
 
+// ---- /api/league/storylines (bulk) -----------------------------------------
+
+interface LeagueStorylineRow {
+  team_abbrev: string;
+  generated_for_date: string;
+  bullet_index: number;
+  bullet_text: string;
+  title: string | null;
+}
+
+/** All 30 teams' most-recent storyline sets in one round trip — drives
+ *  the standings hover tooltip on the league page so we don't fire 30
+ *  /api/team/:abbrev/storylines requests when the user lands on the
+ *  page. Same 3-day staleness cap as the per-team endpoint.
+ *
+ *  Players (the FEAT-12-style mention map) are intentionally NOT
+ *  included. The tooltip is a hover preview, not a click target —
+ *  inline links there would compete for the click and the hover would
+ *  steal focus. Bullets render as plain text. */
+export async function getLeagueStorylinesFromWarehouse(): Promise<
+  Record<string, { generatedForDate: string; title: string; bullets: { text: string }[] }>
+> {
+  const rows = await query<LeagueStorylineRow>(
+    `WITH latest_per_team AS (
+       SELECT team_id, MAX(generated_for_date) AS d
+         FROM gold_team_storyline
+        GROUP BY team_id
+     )
+     SELECT t.abbrev                              AS team_abbrev,
+            CAST(s.generated_for_date AS STRING)  AS generated_for_date,
+            s.bullet_index,
+            s.bullet_text,
+            s.title
+       FROM gold_team_storyline s
+       JOIN latest_per_team l
+         ON l.team_id = s.team_id
+        AND l.d       = s.generated_for_date
+       JOIN silver_team t ON t.team_id = s.team_id
+      WHERE CAST(l.d AS DATE) >= current_date() - INTERVAL '3' DAY
+      ORDER BY t.abbrev, s.bullet_index`,
+  );
+
+  const out: Record<string, { generatedForDate: string; title: string; bullets: { text: string }[] }> = {};
+  for (const r of rows) {
+    const abbrev = r.team_abbrev;
+    if (!out[abbrev]) {
+      out[abbrev] = {
+        generatedForDate: r.generated_for_date,
+        title: (r.title || '').trim() || 'Two-week summary',
+        bullets: [],
+      };
+    }
+    out[abbrev].bullets.push({ text: r.bullet_text });
+  }
+  return out;
+}
+
 // ---- /api/player/:playerId -------------------------------------------------
 
 interface PlayerSeasonRow {
