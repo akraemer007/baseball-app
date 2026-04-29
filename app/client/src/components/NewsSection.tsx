@@ -8,6 +8,7 @@ import {
   savantPlayerUrl,
   savantPreviewUrl,
 } from '../lib/savant';
+import { renderRecapText } from '../lib/recapRenderer';
 import type {
   LeagueResponse,
   MilestoneEvent,
@@ -464,7 +465,7 @@ export default function NewsSection() {
                 )}
                 <p className="recap-body">
                   <span className="recap-dateline mono">{r.dateline}</span>
-                  {r.summary}
+                  {renderRecapText(r.summary, r.players)}
                 </p>
                 <div className="recap-foot muted mono">
                   {r.awayTeamId} {r.awayScore} @ {r.homeTeamId} {r.homeScore} · winner{' '}

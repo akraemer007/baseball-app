@@ -61,6 +61,12 @@ export interface RecapItem {
    *  rendered inline above the prose. Empty/undefined when the lookup
    *  fails or no milestone fired — the recap MUST still render either way. */
   relevantMilestones?: MilestoneEvent[];
+  /** FEAT-12: map of `playerName → playerId` for every player that
+   *  appeared in this game's box score (both teams, batters + pitchers).
+   *  Drives the inline-Savant-link pass on the client. Names with
+   *  ambiguous matches (e.g. two same-last-name teammates) are still
+   *  included; the client decides whether to link a given mention. */
+  players?: Record<string, string>;
 }
 
 export interface RecapsDayGroup {
