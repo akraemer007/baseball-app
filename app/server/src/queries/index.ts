@@ -1137,7 +1137,7 @@ export async function getRecapsFromWarehouse(date: string): Promise<RecapsRespon
      ORDER BY coalesce(r.interest_score, 0) DESC, g.game_pk`,
   );
   const recaps = rows.map(rowToRecap);
-  await attachMilestones(recaps, rows);
+  await Promise.all([attachMilestones(recaps, rows), attachPlayers(recaps, rows)]);
   return { date: safeDate, recaps };
 }
 
@@ -1157,7 +1157,7 @@ export async function getRecapsDaysFromWarehouse(days: number): Promise<RecapsRe
      ORDER BY g.game_date DESC, coalesce(r.interest_score, 0) DESC, g.game_pk`,
   );
   const allRecaps = rows.map(rowToRecap);
-  await attachMilestones(allRecaps, rows);
+  await Promise.all([attachMilestones(allRecaps, rows), attachPlayers(allRecaps, rows)]);
   const byDate = new Map<string, RecapItem[]>();
   for (const r of allRecaps) {
     if (!byDate.has(r.date)) byDate.set(r.date, []);
@@ -1291,6 +1291,61 @@ async function attachMilestones(recaps: RecapItem[], rows: RecapRow[]): Promise<
     // Decorative enrichment must never take the recap response down.
     // Swallow + log; clients see no relevantMilestones field.
     console.warn('[attachMilestones] failed; recap response will omit milestones:', err);
+  }
+}
+
+// ---- player enrichment (FEAT-12) ------------------------------------------
+
+interface RecapPlayerRow {
+  game_pk: number;
+  player_id: number;
+  player_name: string;
+}
+
+/** Attach a `playerName → playerId` map per recap from that game's box
+ *  score. Drives FEAT-12 inline player hyperlinks on the client.
+ *
+ *  Source: `silver_player_game_batting` UNION `silver_player_game_pitching`
+ *  for the recap row's `game_pk`s — covers both teams, batters and
+ *  pitchers, in one round trip.
+ *
+ *  Decorative — wrapped in try/catch. A failure here MUST NOT take down
+ *  the recap response. */
+async function attachPlayers(recaps: RecapItem[], rows: RecapRow[]): Promise<void> {
+  if (recaps.length === 0) return;
+  try {
+    const gamePks = Array.from(new Set(rows.map((r) => Number(r.game_pk))));
+    if (gamePks.length === 0) return;
+    const inList = gamePks.join(', ');
+    const playerRows = await query<RecapPlayerRow>(
+      `SELECT game_pk, player_id, player_name
+         FROM silver_player_game_batting
+        WHERE game_pk IN (${inList})
+          AND player_name IS NOT NULL
+        UNION
+       SELECT game_pk, player_id, player_name
+         FROM silver_player_game_pitching
+        WHERE game_pk IN (${inList})
+          AND player_name IS NOT NULL`,
+    );
+    if (playerRows.length === 0) return;
+    // Build per-game maps. Same player_name on both teams within a game
+    // would collide; last write wins for the map (the client's
+    // recapRenderer falls back to plain text on its own ambiguity check
+    // when two box-score entries share a last name).
+    const byGame = new Map<string, Record<string, string>>();
+    for (const p of playerRows) {
+      const key = String(p.game_pk);
+      if (!byGame.has(key)) byGame.set(key, {});
+      byGame.get(key)![p.player_name] = String(p.player_id);
+    }
+    for (const r of recaps) {
+      const map = byGame.get(r.gameId);
+      if (map && Object.keys(map).length > 0) r.players = map;
+    }
+  } catch (err) {
+    // Decorative enrichment must never take the recap response down.
+    console.warn('[attachPlayers] failed; recap response will omit players:', err);
   }
 }
 
