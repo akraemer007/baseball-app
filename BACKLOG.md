@@ -31,7 +31,8 @@ worktree. The brainstorm archive lives at `make_it_impressive.md`.
 | 2 | PIPE-0.5, PIPE-1, PIPE-2, PIPE-3 | ✅ (PIPE-4 odds skipped) |
 | 3 | DERIV-1, DERIV-2, DERIV-3, DERIV-4, DERIV-5, DERIV-6 | ✅ |
 | 4 | FEAT-1, FEAT-4 | ⏭️ in review (FEAT-5/6/7/13 abandoned, FEAT-8 rescoped → Wave 5) |
-| 5 | DERIV-7, DERIV-8, ARCH-2, ARCH-5, FEAT-8, FEAT-9, FEAT-12, FEAT-18, FEAT-19 | ⏭️ |
+| 5 | DERIV-7, DERIV-8, FEAT-9, FEAT-12 | ⏭️ (ARCH-2/5 abandoned; FEAT-8/19 merged) |
+| 6+ | DERIV-9, PIPE-5, FEAT-18, FEAT-20, FEAT-21, FEAT-22, FEAT-28, ARCH-6..13, FEAT-23..27 | ⏭️ stubs |
 
 Other status:
 - **FEAT-11** (recap interest chips) — already-shipped, closed.
@@ -292,10 +293,18 @@ this in Wave 0 (solo) so later tickets rebase on top cleanly.
 
 ---
 
-### ARCH-2 — Progressive-disclosure pattern for stat cards
+### ARCH-2 — Progressive-disclosure pattern for stat cards — **ABANDONED 2026-04-29**
 
 **Lane:** client
-**Status:** blocked by: ARCH-1 · **Blocks:** none (optional UX layer)
+**Status:** abandoned · **Blocks:** none
+
+**Why abandoned:** The team page didn't end up feeling cluttered after
+Wave 4 — FEAT-4's Advanced sub-row pattern handled the few additional
+stats cleanly without needing a generalized tier system. If future
+stat additions push density past the threshold, revisit then.
+
+(Original ticket body preserved below for context.)
+
 **Scope:** Instead of rendering all 15+ stats always, classify each
 stat as `default` / `expanded`. Default stats render; a "+N more"
 link at the bottom of each category card (Batting / Pitching /
@@ -496,10 +505,20 @@ edits.
 
 ---
 
-### ARCH-5 — Lightweight test harness for `jobs/recaps/`
+### ARCH-5 — Lightweight test harness for `jobs/recaps/` — **ABANDONED 2026-04-29**
 
 **Lane:** cross-cutting (ops)
-**Status:** unblocked · **Blocks:** none
+**Status:** abandoned · **Blocks:** none
+
+**Why abandoned:** The recap pipeline has been stable through Wave 4
+and the manual-spotcheck cadence is sufficient for a personal project.
+Keeping the test infrastructure footprint minimal aligns with the
+"don't over-engineer" rule in the user's CLAUDE.md. Revisit if the
+recap LLM prompt or input shape gets a major rework (DERIV-9 might
+trigger that).
+
+(Original ticket body preserved below for context.)
+
 **Scope:** Add a minimal pytest harness covering only the two
 logic paths that have burned us before: interest-score
 classification (`interest.py`) and NOT-EXISTS skip gating
@@ -564,6 +583,543 @@ Commit clean with the test results in the body.
 **Notes / risks:** If interest.py imports Spark/dbutils at module
 level, tests will fail to import. Agent may need a small refactor
 to delay that import.
+
+---
+
+### ARCH-6 — Parameterized SQL via `query<T>(sql, params)` helper
+
+**Lane:** server
+**Status:** unblocked · **Blocks:** none (but easier post-ARCH-8)
+**Scope:** Every function in `app/server/src/queries/index.ts` and
+`queries/matchup.ts` builds SQL via template-literal interpolation.
+Numeric inputs are coerced through `Number()`, string inputs are
+regex-allowlisted, so this is not exploitable today — but the
+pattern is fragile. One forgotten allowlist on a future endpoint
+becomes a SQL-injection bug. Add a parameter-marker helper and
+migrate the user-input-fronting queries first.
+
+**Acceptance criteria:**
+
+- `app/server/src/lib/warehouse.ts` exposes a new
+  `query<T>(sql: string, params?: unknown[])` overload that uses
+  `@databricks/sql` parameter markers (`?` placeholders).
+- The existing parameter-less `query<T>(sql)` continues to work.
+- Migrate at minimum these three call sites — the ones that
+  accept the most user-shaped input: `getRecapsFromWarehouse`,
+  `getStatDistributionFromWarehouse`,
+  `getPlayerFromWarehouse`. Replace inline `${var}` with `?`.
+- Leave the remaining queries on the legacy interpolation path;
+  add a `// TODO(ARCH-6): migrate to params` comment at each.
+- Typecheck passes; manual smoke against a running warehouse
+  shows the migrated endpoints return the same shape as before.
+
+**Files expected to change:**
+
+- MODIFY `app/server/src/lib/warehouse.ts` — add params overload.
+- MODIFY `app/server/src/queries/index.ts` — migrate three call
+  sites, leave TODOs on the rest.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on ARCH-6.
+Read BACKLOG.md §ARCH-6 for scope + acceptance criteria.
+
+Goal: stop building SQL by string interpolation in the queries
+that accept the most user-shaped input. The @databricks/sql
+client supports parameter markers — use them.
+
+Steps:
+1. Add `query<T>(sql, params?: unknown[])` to
+   app/server/src/lib/warehouse.ts. Keep the existing
+   parameter-less call working. Ensure executeStatement is
+   given the params via its supported options shape (check the
+   @databricks/sql README in node_modules if unsure).
+2. Migrate exactly three queries in app/server/src/queries/index.ts:
+   getRecapsFromWarehouse, getStatDistributionFromWarehouse,
+   getPlayerFromWarehouse. Replace every `${var}` interpolation
+   inside the SQL with `?` and add a matching params array.
+3. Add `// TODO(ARCH-6): migrate to params` at the top of every
+   OTHER query function in queries/index.ts and queries/matchup.ts.
+
+Verify:
+- cd app && npx tsc --noEmit -p server/tsconfig.json
+- ./scripts/dev.sh, hit /api/recaps?days=7, /api/league/stat-
+  distribution?stat=avg, /api/player/:playerId. Compare response
+  bodies against main.
+
+Do NOT touch jobs/, client code, or other queries beyond the
+three named. Commit cleanly; PR body should call out which three
+endpoints moved to parameter markers.
+```
+
+**Notes / risks:** Easier to do AFTER ARCH-8 (split) since
+queries/index.ts is 1,510 LOC today. If ARCH-8 lands first, the
+agent only edits a smaller file per migrated endpoint. Either
+order works.
+
+---
+
+### ARCH-7 — JSON error-handler middleware on Express server
+
+**Lane:** server
+**Status:** unblocked · **Blocks:** none
+**Scope:** Routes throw or call `next(err)` to surface failures
+(e.g. `routes/team.ts` throws "Team not found"), but
+`app/server/src/index.ts` registers no error handler. Express
+falls back to its default HTML error page for `/api/*`, so the
+client receives HTML where it expects JSON. Add a JSON handler
+that distinguishes a small set of expected error shapes from
+500s.
+
+**Acceptance criteria:**
+
+- `app/server/src/index.ts` registers a final
+  `(err, req, res, next)` handler after all routers.
+- Errors with a `.status` field use that status; "not found"
+  shaped errors (string includes "not found", case-insensitive)
+  return 404; everything else returns 500.
+- Response body is `{ error: string, code?: string }` JSON.
+- Unhandled errors still log to stderr with a stable prefix
+  (`[api-error]`) including method + path so they're greppable.
+- A bad request to `/api/team/9999` (nonexistent team) now
+  returns `{"error":"Team not found"}` with status 404 instead
+  of an HTML error page.
+
+**Files expected to change:**
+
+- MODIFY `app/server/src/index.ts` — add handler block.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on ARCH-7.
+Read BACKLOG.md §ARCH-7 for scope + acceptance criteria.
+
+Add a JSON error-handler middleware to
+app/server/src/index.ts. Place it AFTER all routers are mounted.
+Shape:
+
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    const msg = String(err?.message ?? err);
+    const status = err?.status ??
+      (/not found/i.test(msg) ? 404 : 500);
+    console.error(`[api-error] ${req.method} ${req.path}`, err);
+    res.status(status).json({ error: msg });
+  });
+
+Verify:
+- ./scripts/dev.sh
+- curl -s -o /dev/null -w "%{http_code}\n" \
+    http://localhost:8000/api/team/9999  → 404
+- curl -s http://localhost:8000/api/team/9999 | jq .  →
+    { "error": "Team not found" }
+
+Do NOT change any route handler. Do NOT touch the client. Commit
+cleanly with a one-paragraph body.
+```
+
+**Notes / risks:** None. Five-minute change.
+
+---
+
+### ARCH-8 — Split `queries/index.ts` along domain lines
+
+**Lane:** server
+**Status:** unblocked · **Blocks:** ARCH-6 (cleanly), ARCH-12,
+ARCH-13
+**Scope:** `app/server/src/queries/index.ts` is 1,510 lines and
+spans eight unrelated domains (league, hr-race, stat-distribution,
+team, team-milestones, player, recaps, projections). `queries/
+matchup.ts` already split off as a precedent. Split the rest along
+the same domain lines that `app/shared/types/` already uses, so
+adding a new endpoint lands in a 100–300 line file instead of a
+1,500 line one. No logic changes.
+
+**Acceptance criteria:**
+
+- `app/server/src/queries/` contains one file per domain:
+  `league.ts`, `team.ts`, `player.ts`, `recaps.ts`,
+  `projections.ts`, `stat-distribution.ts`, `milestones.ts`,
+  `game.ts`. Plus the existing `matchup.ts`.
+- `index.ts` becomes a barrel that re-exports the named exports
+  from the per-domain files (or is deleted entirely if no
+  consumer imports the barrel — check first).
+- Shared helpers (`STAT_LABELS`, `LOWER_IS_BETTER`,
+  `INTEGER_STATS`, `STAT_CATEGORIES`, `safeParseDate`, etc.)
+  move to `app/server/src/queries/_shared.ts`.
+- Each route file in `app/server/src/routes/` imports from the
+  specific domain file, not the barrel.
+- `npx tsc --noEmit -p server/tsconfig.json` passes.
+- Endpoints render identically — manual smoke on `/api/league`,
+  `/api/team/CHC`, `/api/recaps`.
+
+**Files expected to change:**
+
+- ADD `app/server/src/queries/{league,team,player,recaps,
+  projections,stat-distribution,milestones,game,_shared}.ts`.
+- MODIFY (or DELETE) `app/server/src/queries/index.ts`.
+- MODIFY `app/server/src/routes/*.ts` — adjust imports.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on ARCH-8.
+Read BACKLOG.md §ARCH-8 for scope + acceptance criteria.
+
+Split app/server/src/queries/index.ts (1,510 LOC) into one file
+per domain, mirroring the layout in app/shared/types/. No logic
+changes — pure move-and-import.
+
+Steps:
+1. Read app/shared/types/index.ts to inventory the domains.
+2. Create one file per domain under app/server/src/queries/:
+   league.ts, team.ts, player.ts, recaps.ts, projections.ts,
+   stat-distribution.ts, milestones.ts, game.ts.
+3. Lift shared helpers to app/server/src/queries/_shared.ts.
+4. For each route file in app/server/src/routes/, swap the barrel
+   import for the per-domain import.
+5. If queries/index.ts has no remaining consumers, delete it.
+   Otherwise leave it as a barrel that only re-exports.
+
+Verify:
+- cd app && npx tsc --noEmit -p server/tsconfig.json
+- ./scripts/dev.sh; hit /api/league, /api/team/CHC, /api/recaps,
+  /api/player/660271, /api/projections — diff response shapes
+  against main if anything looks off
+
+Do NOT change query bodies. Do NOT introduce new helpers. Do
+NOT touch the client. Commit when typecheck passes.
+```
+
+**Notes / risks:** Mechanical. Coordinate with ARCH-6, ARCH-12,
+ARCH-13 — all three touch queries/* and any of them landing
+first either makes ARCH-8's diff bigger or ARCH-8 makes theirs
+smaller. Easiest order: ARCH-8 → then the rest in parallel.
+
+---
+
+### ARCH-9 — Extract `PercentileRow`; lift `hexToRgb` and `formatGB` to `lib/`
+
+**Lane:** client
+**Status:** unblocked · **Blocks:** none
+**Scope:** `app/client/src/pages/TeamPage.tsx` is 972 lines. The
+inline `PercentileRow` is ~267 LOC of that, and `hexToRgb` /
+`formatGB` are duplicated between `TeamPage.tsx` and
+`LeaguePage.tsx` with one subtle drift (the `formatGB` leader
+case returns `'—'` in one and `'0'` in the other). Extract.
+
+**Acceptance criteria:**
+
+- `app/client/src/components/PercentileRow.tsx` exists and is
+  imported by `TeamPage.tsx`. Same props, same render output.
+- `app/client/src/lib/color.ts` exports `hexToRgb`. Both
+  `TeamPage.tsx` and `LeaguePage.tsx` import from it; the inline
+  copies are deleted.
+- `app/client/src/lib/stats.ts` (extend if it exists, create
+  if not) exports a single `formatGB`. Pick the leader behavior
+  intentionally — `'—'` is the recommended default since GB-of-0
+  for a leader reads as a number, not a label. Document the
+  choice in a one-line comment.
+- `TeamPage.tsx` drops below 700 LOC.
+- Typecheck and visual smoke pass.
+
+**Files expected to change:**
+
+- ADD `app/client/src/components/PercentileRow.tsx`.
+- ADD `app/client/src/lib/color.ts`.
+- ADD or MODIFY `app/client/src/lib/stats.ts`.
+- MODIFY `app/client/src/pages/TeamPage.tsx`.
+- MODIFY `app/client/src/pages/LeaguePage.tsx`.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on ARCH-9.
+Read BACKLOG.md §ARCH-9 for scope + acceptance criteria.
+
+Three small extractions:
+
+1. Move the inline PercentileRow component out of
+   app/client/src/pages/TeamPage.tsx into
+   app/client/src/components/PercentileRow.tsx. Keep its types,
+   keep its CSS class names. TeamPage imports it.
+
+2. Lift hexToRgb to app/client/src/lib/color.ts. It currently
+   exists at TeamPage.tsx:935 and LeaguePage.tsx:68. Both pages
+   import from lib/color.ts after.
+
+3. Lift formatGB to app/client/src/lib/stats.ts (extend if file
+   exists, create if not). Both copies have a subtle drift in
+   the leader case — pick `'—'` (em-dash) as the canonical
+   leader output and add a one-line comment explaining why.
+
+Verify:
+- cd app && npx tsc --noEmit -p client/tsconfig.json
+- ./scripts/dev.sh, open /team/CHC: expand a stat row, the
+  percentile strip plot must render exactly as on main
+- Open /, click each division card: leader rows show the
+  agreed leader output, non-leader rows show the same numeric
+  format as before
+- TeamPage.tsx LOC < 700 (`wc -l app/client/src/pages/TeamPage.tsx`)
+
+Do NOT touch CSS. Do NOT change render output. Commit cleanly.
+```
+
+**Notes / risks:** Conflicts with FEAT-23 (also touches
+TeamPage). Run ARCH-9 first; FEAT-23 rebases onto a smaller
+file.
+
+---
+
+### ARCH-10 — Move savant URL builder to `app/shared/savant.ts`
+
+**Lane:** shared + server + client
+**Status:** unblocked · **Blocks:** none
+**Scope:** `savantBoxScoreUrl` is duplicated:
+`app/server/src/queries/index.ts:28` has it with a comment
+`Kept in sync with app/client/src/lib/savant.ts`. That comment
+is the smell. The function is a pure string formatter — belongs
+in `shared/`.
+
+**Acceptance criteria:**
+
+- `app/shared/savant.ts` exports `savantBoxScoreUrl(gamePk)` and
+  any sibling savant URL helpers from
+  `app/client/src/lib/savant.ts`.
+- Server queries import from `@shared/savant`. Client imports
+  from `@shared/savant` (or whatever path alias the workspace
+  uses; check `app/shared/types` for the convention).
+- The "kept in sync" comment is gone.
+- Typecheck passes; both server-rendered links and client-side
+  links resolve to the same URLs as on main.
+
+**Files expected to change:**
+
+- ADD `app/shared/savant.ts`.
+- MODIFY `app/server/src/queries/index.ts` (or post-ARCH-8
+  per-domain files that contained it).
+- MODIFY `app/client/src/lib/savant.ts` — re-export from shared,
+  or delete if no other call sites.
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on ARCH-10.
+Read BACKLOG.md §ARCH-10 for scope + acceptance criteria.
+
+Move the Savant URL formatter to shared. It currently lives in:
+  - app/server/src/queries/index.ts:28 (with "kept in sync" comment)
+  - app/client/src/lib/savant.ts
+
+Steps:
+1. Create app/shared/savant.ts with savantBoxScoreUrl and any
+   other URL helpers currently in app/client/src/lib/savant.ts.
+2. Update server import to @shared/savant (use whatever alias
+   pattern app/shared/types/ uses).
+3. Replace app/client/src/lib/savant.ts: either re-export from
+   shared (single line) or delete and update its callers to
+   import from shared. Pick the shorter diff.
+4. Remove the "kept in sync" comment from the server file.
+
+Verify:
+- cd app && npx tsc --noEmit -p client/tsconfig.json -p server/tsconfig.json
+- ./scripts/dev.sh; open /, click a recap card → "Box score on
+  Savant" link goes to the same URL as on main
+
+Commit cleanly.
+```
+
+**Notes / risks:** Trivial. Conflicts with ARCH-8 if both touch
+queries/index.ts during the move; do this after ARCH-8 if both
+land in the same wave.
+
+---
+
+### ARCH-11 — Discriminated `RecapsResponse` type
+
+**Lane:** shared + server + client
+**Status:** unblocked · **Blocks:** none
+**Scope:** `app/shared/types/recap.ts` declares
+`RecapsResponse` with both `date?` (single-day) and `days?`
+(multi-day) optional, plus a flat `recaps` array. The client
+never narrows on which mode it's in. Replace with a discriminated
+union so the server's response shape is honest about which mode
+it returned and the client gets type help.
+
+**Acceptance criteria:**
+
+- `RecapsResponse = RecapsByDateResponse | RecapsByDaysResponse`
+  discriminated by a `mode: 'date' | 'days'` literal.
+- `RecapsByDateResponse` carries `date: string` (no `days`); the
+  flat `recaps` array stays.
+- `RecapsByDaysResponse` carries `days: { date, recaps }[]` (no
+  flat `recaps`).
+- Server `routes/recaps.ts` returns the correct shape per mode
+  including the `mode` discriminator.
+- Client reads via type narrowing (`if (data.mode === 'days')`),
+  not `data.recaps`.
+- Typecheck passes; recap UI renders identically.
+
+**Files expected to change:**
+
+- MODIFY `app/shared/types/recap.ts`.
+- MODIFY `app/server/src/routes/recaps.ts` and
+  `app/server/src/queries/recaps.ts` (post-ARCH-8) /
+  `queries/index.ts` (pre-ARCH-8).
+- MODIFY `app/client/src/components/NewsSection.tsx` (and any
+  other consumer found via `grep -rn RecapsResponse client/`).
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on ARCH-11.
+Read BACKLOG.md §ARCH-11 for scope + acceptance criteria.
+
+Replace the dual-shaped RecapsResponse with a discriminated
+union. Concrete shapes:
+
+  type RecapsByDateResponse = {
+    mode: 'date'; date: string; recaps: RecapItem[];
+  };
+  type RecapsByDaysResponse = {
+    mode: 'days'; days: { date: string; recaps: RecapItem[] }[];
+  };
+  type RecapsResponse = RecapsByDateResponse | RecapsByDaysResponse;
+
+Server (routes/recaps.ts) sets `mode` correctly per branch.
+Client (NewsSection.tsx) narrows with `if (data.mode === ...)`.
+
+Verify:
+- cd app && npx tsc --noEmit -p client/tsconfig.json -p server/tsconfig.json
+- ./scripts/dev.sh, open /; recap cards still render. Hit
+  /api/recaps?date=2026-04-27 and /api/recaps?days=7 and
+  confirm the new `mode` field appears.
+
+Do NOT change RecapItem. Commit cleanly.
+```
+
+**Notes / risks:** Public API shape change (adds `mode`); no
+external clients today. If anything breaks, it's the client
+itself, which we control.
+
+---
+
+### ARCH-12 — Honest `PlayerResponse` contract
+
+**Lane:** shared + server
+**Status:** unblocked · **Blocks:** future Player surface work
+**Scope:** `getPlayerFromWarehouse` in
+`app/server/src/queries/index.ts:1054-1066` ships three fields
+that lie:
+- `opponentTeamId: g.team_abbrev` (returns the player's own
+  team, not the opponent)
+- `isHome: true` (hardcoded)
+- `statcast: {}` (always empty)
+
+PlayersPage is dormant so nothing renders these today, but the
+type promises data the API doesn't have. Either implement them
+or drop them so the type matches reality.
+
+**Acceptance criteria:**
+
+- Either:
+  (a) Drop `opponentTeamId`, `isHome`, `statcast` from
+      `PlayerGameLogEntry` (or wherever they live in
+      `app/shared/types/player.ts`) and from
+      `getPlayerFromWarehouse`. Document in
+      `app/shared/types/player.ts` what got removed and
+      why.
+  (b) Implement them honestly: opponent team via the silver
+      game's home/away pair, isHome via comparing the player's
+      team_id to the home team_id, and statcast from
+      `silver_pa` / `silver_pitch` joined on `(player_id,
+      game_pk)`.
+  Recommend (a) — drop them. Cheaper now; honest types.
+
+- The three TODO comments in
+  `getPlayerFromWarehouse` go away.
+- Typecheck passes.
+
+**Files expected to change:**
+
+- MODIFY `app/shared/types/player.ts`.
+- MODIFY `app/server/src/queries/player.ts` (post-ARCH-8) /
+  `queries/index.ts` (pre-ARCH-8).
+- (No client changes — PlayersPage is a stub that doesn't render
+  these fields today.)
+
+**Agent prompt:**
+
+```
+You are in a git worktree branched off main, working on ARCH-12.
+Read BACKLOG.md §ARCH-12 for scope + acceptance criteria.
+
+Drop three lying fields from PlayerResponse rather than
+implement them: opponentTeamId, isHome, statcast (currently
+hardcoded to wrong values in getPlayerFromWarehouse).
+
+Steps:
+1. Remove those fields from the type in
+   app/shared/types/player.ts. Add a one-line note:
+   `// (opponentTeamId / isHome / statcast removed ARCH-12 —
+   re-add when getPlayerFromWarehouse can compute them honestly)`
+2. Remove the lines that produce them in getPlayerFromWarehouse
+   (queries/player.ts post-ARCH-8 or queries/index.ts pre).
+3. Delete the corresponding `// TODO` comments.
+
+Verify:
+- cd app && npx tsc --noEmit -p client/tsconfig.json -p server/tsconfig.json
+- ./scripts/dev.sh; hit /api/player/660271 — response loses
+  three fields, everything else renders the same shape.
+
+Commit cleanly. PR body should say "drop > implement" and link
+back to the ticket.
+```
+
+**Notes / risks:** If the user disagrees with the "drop" call,
+flip to (b) and the ticket becomes ~2 hours of SQL work
+against silver_pa/silver_pitch. Default to drop.
+
+---
+
+### ARCH-13 — Tag the swallowed error log in `attachMilestones`
+
+**Lane:** server
+**Status:** unblocked · **Blocks:** none
+**Scope:** `attachMilestones` (post-ARCH-8: in
+`queries/recaps.ts`; pre: in `queries/index.ts:1290-1294`) wraps
+its SQL call in a try/catch that logs to `console.warn` with no
+tag. If the milestone enrichment SQL silently breaks for a
+week, nobody notices in the logs. One-line fix: prefix the warn
+with `[recap-milestones]` so it's greppable.
+
+**Acceptance criteria:**
+
+- Single `console.warn(...)` call in `attachMilestones` is
+  replaced with `console.warn('[recap-milestones]', ...)`.
+- Nothing else changes.
+
+**Files expected to change:**
+
+- MODIFY `app/server/src/queries/recaps.ts` (post-ARCH-8) or
+  `queries/index.ts` (pre).
+
+**Agent prompt:**
+
+```
+You are working on ARCH-13. Find the try/catch in
+attachMilestones (grep for "attachMilestones" then "console.warn"
+in the same function). Prepend the tag '[recap-milestones]' to
+the warn. That's the entire diff.
+
+Verify: typecheck still passes. Commit with body referencing the
+ticket.
+```
+
+**Notes / risks:** None. Two-minute change. Worth doing the
+next time anyone is editing that file regardless.
 
 ---
 
@@ -2810,6 +3366,371 @@ concern, not a real one today.
 
 ---
 
+### FEAT-20 — Animate prior-year comparison line (stub)
+
+**Lane:** client (chart UX)
+**Status:** unblocked · **Blocks:** none
+**Scope:** When the year-over-year comparison line appears on a
+trajectory chart, it currently snaps in fully drawn. Animate it
+growing from the start point alongside the current-year line so the
+reveal matches the rest of the chart's draw-in animation.
+
+**TBD:** which chart(s) exactly (DivisionTrajectoryChart? Team
+trajectory?), easing curve, whether the prior-year line should
+finish with a fade or stay solid.
+
+---
+
+### FEAT-21 — Matchup panel load time (stub)
+
+**Lane:** server perf
+**Status:** unblocked · **Blocks:** none
+**Scope:** Click-to-expand on a Today's Games projection card feels
+slightly slow before the matchup panel paints. The matchup query
+fans out into 6+ parallel SQL calls. Profile the round-trip,
+identify the hot path, and either consolidate queries, cache, or
+preload on hover.
+
+**TBD:** profiling approach (browser perf tab vs server log timing),
+target paint-time SLO (~300 ms?), whether to prefetch on
+projection-card render.
+
+---
+
+### FEAT-22 — Matchup spark plots: stop the snap-in (stub)
+
+**Lane:** client (chart UX)
+**Status:** unblocked · **Blocks:** none
+**Scope:** On first render, the spark plots inside the matchup panel
+start visibly wider than their final width before settling in. The
+chart's `width` measurement lags the initial paint (ResizeObserver
+fires after first frame). Investigate the timing of width detection
+and either render at zero width until measured, or use the parent's
+known width on first paint.
+
+**TBD:** root cause (likely `useLayoutEffect` ordering in
+`StatDistributionChart.tsx`), accept-zero-width-first vs
+measure-before-paint, perf cost.
+
+---
+
+### FEAT-23 — Consolidate trajectory-mode toggle to `.scope-toggle`
+
+**Lane:** client (CSS + small JSX)
+**Status:** unblocked · **Blocks:** none
+**Scope:** `app/client/src/pages/TeamPage.tsx:336-364` defines an
+inline-styled "Division / YoY" trajectory toggle. The same visual
+intent already exists as `.scope-toggle` in
+`app/client/src/index.css:804`. Two switches, same job. Replace
+the inline version.
+
+**Acceptance criteria:**
+
+- The trajectory mode buttons in `TeamPage.tsx` use the existing
+  `.scope-toggle` class (or its shipped variants) instead of
+  inline styles.
+- Visual output is unchanged (or improved — slight differences
+  acceptable as long as the toggle still reads as a toggle and
+  uses team-color accent).
+- No new CSS classes added if `.scope-toggle` already covers it.
+- TeamPage diff loses ~30 lines.
+
+**Files expected to change:**
+
+- MODIFY `app/client/src/pages/TeamPage.tsx`.
+- (Possibly) MODIFY `app/client/src/index.css` — only if a small
+  variant on `.scope-toggle` is needed.
+
+**Agent prompt:**
+
+```
+You are working on FEAT-23. Read the existing `.scope-toggle`
+rule in app/client/src/index.css (around line 804) and the
+inline-styled trajectory toggle in TeamPage.tsx (around
+line 336-364). Replace the inline JSX with markup that uses
+`.scope-toggle`. If the CSS doesn't quite cover the team-color
+active state, extend `.scope-toggle` with a small variant
+rather than re-adding inline styles.
+
+Verify:
+- ./scripts/dev.sh, open /team/CHC, confirm Division and YoY
+  buttons toggle, the active button is team-color accented,
+  hover state behaves
+- Visual diff is acceptable to the user (call it out in the
+  PR body if anything changed visually)
+
+Commit cleanly.
+```
+
+**Notes / risks:** Conflicts with ARCH-9 (also touches
+TeamPage). Sequence: ARCH-9 → FEAT-23.
+
+---
+
+### FEAT-24 — Dedupe `proj-card` CSS rule
+
+**Lane:** client (CSS)
+**Status:** unblocked · **Blocks:** none
+**Scope:** `proj-card` is defined twice in
+`app/client/src/index.css` — once around line 927 and again
+around line 1298 — with later patches like `position: relative`
+and `cursor: pointer` added on top. Confusing maintenance.
+Collapse into one rule block.
+
+**Acceptance criteria:**
+
+- One `.proj-card` rule in `index.css`. All current applied
+  styles preserved.
+- Visual output of the projections cards is unchanged.
+
+**Files expected to change:**
+
+- MODIFY `app/client/src/index.css`.
+
+**Agent prompt:**
+
+```
+You are working on FEAT-24. `.proj-card` and its variants
+(`.proj-card-final`, `.proj-card:focus-visible`, etc.) are
+scattered across two places in app/client/src/index.css —
+around line 927 and around line 1298. Collapse the rules into
+a single contiguous block. No behavior changes; pure
+consolidation.
+
+Verify:
+- ./scripts/dev.sh, open / and scan the projections strip
+- Visual diff against main: nothing moved
+
+Commit cleanly.
+```
+
+**Notes / risks:** Conflicts with FEAT-26 (also touches
+`index.css`). Either run sequentially or hand both to the same
+agent.
+
+---
+
+### FEAT-25 — Replace chart `rgba()` literals with `--chart-grid-*` vars
+
+**Lane:** client
+**Status:** unblocked · **Blocks:** none
+**Scope:** Several chart components use rgba color literals
+(`rgba(10, 22, 40, 0.45)` and similar) for gridlines and axes
+even though `app/client/src/index.css:15-18` already defines
+`--chart-grid-strong` / `--chart-grid-weak` for exactly this.
+Drift between the abstraction and the SVGs. Replace literals
+with `var(--chart-grid-*)`.
+
+**Acceptance criteria:**
+
+- All rgba literals in `app/client/src/components/*Chart*.tsx`
+  that match the grid/axis color palette are replaced with the
+  appropriate CSS var (resolved via `getComputedStyle` if needed
+  for d3-rendered SVG attrs).
+- Charts render visually identically.
+- A grep for `rgba\(10,` across `app/client/src/components/`
+  returns zero hits.
+
+**Files expected to change:**
+
+- MODIFY chart components under `app/client/src/components/`
+  (likely `DivisionTrajectoryChart.tsx`,
+  `StatDistributionChart.tsx`, `HrRaceChart.tsx` — confirm via
+  grep).
+
+**Agent prompt:**
+
+```
+You are working on FEAT-25. Grep for `rgba(` across
+app/client/src/components/. For every literal that matches the
+grid/axis palette (the navy-ish ones at low alpha), replace
+with `var(--chart-grid-strong)` or `var(--chart-grid-weak)` per
+context. Where d3 sets stroke/fill via attribute (not CSS),
+either:
+  - move the styling to CSS classes, or
+  - resolve the var via
+    `getComputedStyle(document.documentElement)
+      .getPropertyValue('--chart-grid-strong').trim()`
+    once per component.
+
+Verify:
+- ./scripts/dev.sh; open /, /team/CHC; charts visually unchanged
+- `grep -rn 'rgba(10,' app/client/src/components/` returns 0
+
+Commit cleanly with a one-paragraph PR body listing files
+touched.
+```
+
+**Notes / risks:** The d3 attribute-vs-CSS subtlety is the only
+catch. Some current code may rely on rgba for transient overlay
+states (hover crosshair) that aren't in the var palette — leave
+those alone.
+
+---
+
+### FEAT-26 — `:focus-visible` on interactive cards
+
+**Lane:** client (CSS)
+**Status:** unblocked · **Blocks:** none
+**Scope:** `.proj-card` has a `:focus-visible` rule
+(`index.css:1301-1304`) but `.standings-card`, `.recap-card`,
+`.percentile-row-expandable`, and `.milestone-item` don't.
+Keyboard navigation gets the browser default outline at best
+on those four. One CSS block mirroring the proj-card rule.
+
+**Acceptance criteria:**
+
+- New `:focus-visible` rules in `index.css` covering the four
+  classes named above with the same visual treatment as
+  `.proj-card:focus-visible`.
+- Tab key navigation through the league standings cards, news
+  recap cards, team percentile rows, and milestone items shows
+  a visible focus indicator.
+- No JSX changes — pure CSS.
+
+**Files expected to change:**
+
+- MODIFY `app/client/src/index.css`.
+
+**Agent prompt:**
+
+```
+You are working on FEAT-26. Mirror the existing
+`.proj-card:focus-visible` rule (index.css around line 1301)
+for these four classes: .standings-card, .recap-card,
+.percentile-row-expandable, .milestone-item. One small CSS
+block. No JSX changes.
+
+Verify:
+- ./scripts/dev.sh; open /, press Tab repeatedly. Focus
+  indicator should be visible on each interactive card. Same
+  on /team/CHC for percentile rows and milestone items.
+
+Commit cleanly.
+```
+
+**Notes / risks:** Conflicts with FEAT-24 (also touches
+`index.css`). Sequence or combine.
+
+---
+
+### FEAT-27 — PlayersPage orphan: link or unmount
+
+**Lane:** client
+**Status:** unblocked · **Blocks:** none
+**Scope:** `/players` resolves to a stub page ("Player profiles
+are being rebuilt…") but no nav link points to it. ARCH-3
+hid the Player tab; the route is still wired. Decide: either
+(a) unmount the route entirely until the Player surface
+returns, redirecting `/players` to `/`, or (b) keep the stub but
+add a deliberate entry point so users can find it.
+
+Recommend (a) — unmount. The stub serves nobody today, and
+removing it stops typo'd URLs from landing on a dead-end page.
+
+**Acceptance criteria:**
+
+- Either:
+  (a) The `/players` route no longer matches in the router; a
+      `*` catch-all redirects unknown paths (including
+      `/players`) to `/`. `PlayersPage.tsx` is deleted.
+  (b) `NavBar.tsx` adds a "Players" link, or some other surface
+      links to `/players`. PlayersPage stub copy stays as-is.
+- Typecheck passes; manual smoke shows the chosen behavior.
+
+**Files expected to change (option a — recommended):**
+
+- MODIFY `app/client/src/App.tsx` (or wherever the router lives).
+- DELETE `app/client/src/pages/PlayersPage.tsx`.
+
+**Agent prompt:**
+
+```
+You are working on FEAT-27. Default to option (a) — unmount
+PlayersPage and redirect `/players` to `/`. Steps:
+
+1. Find the router setup (likely app/client/src/App.tsx or
+   a routes file). Remove the `/players` route.
+2. Confirm the catch-all/`*` handler routes unknown paths to
+   `/`. Add one if missing.
+3. Delete app/client/src/pages/PlayersPage.tsx.
+4. Grep for any remaining import of PlayersPage and remove.
+
+If the user explicitly asks for option (b) instead, add a
+"Players" link to NavBar.tsx pointing at `/players` and leave
+the page in place.
+
+Verify:
+- cd app && npx tsc --noEmit -p client/tsconfig.json
+- ./scripts/dev.sh; hit /players directly — should land on /
+- Confirm no console errors
+
+Commit cleanly. PR body says which option and why.
+```
+
+**Notes / risks:** This collides with ARCH-3 lineage. If the
+Player surface is being actively planned for the next wave,
+flip to option (b) instead.
+
+---
+
+### FEAT-28 — Refresh "?" help overlay with Wave 4 surfaces (stub)
+
+**Lane:** client
+**Status:** unblocked · **Blocks:** none
+**Scope:** FEAT-15 shipped a toggleable "?" help overlay describing
+the app's surfaces. Wave 4 added several new ones the overlay
+hasn't caught up with — clickable game point on Today's Games card
+(matchup panel with FIP, clickable pitcher dot, L10 slashline, the
+chevron toggle, CT start time, Upcoming/Completed split), xwOBA /
+wOBA / xBA Advanced sub-row on team page, team Milestones section,
+inline milestone enrichment on recap cards. Refresh the overlay
+copy + anchor markers so the help text matches what a new visitor
+will see.
+
+**TBD:** which surfaces deserve their own pointer vs being grouped,
+copy length per surface, whether to add a "what's new" subsection
+for power users vs. keeping the overall help purely first-time-user
+oriented.
+
+---
+
+### PIPE-5 — Sportsbook odds: replace / augment Elo (stub)
+
+**Lane:** pipeline
+**Status:** unblocked · **Blocks:** TBD downstream feature
+**Scope:** The home-field implied win probability that drives
+Today's Games projection bars currently comes from `gold_game_elo`
+(our internal Elo model). Replace or augment with sportsbook
+moneyline odds from a public source so the bar reflects market
+opinion, not just our model. Could deprecate Elo entirely OR run
+both side-by-side as a "model vs market" delta indicator.
+
+**TBD:** odds source (which sportsbook / aggregator API, free vs
+paid), ingest cadence, schema, whether to deprecate
+`gold_game_elo` or keep both. The earlier-skipped PIPE-4 was a
+similar idea — consider folding that scope in here.
+
+---
+
+### DERIV-9 — Recap LLM enrichment with real-world news (stub)
+
+**Lane:** derivation (LLM)
+**Status:** unblocked · **Blocks:** none
+**Scope:** The daily recap LLM prompt today only sees the box score
+and our internal interest features. To make recaps "speak to things
+stats can't" (per `make_it_impressive.md` line 147 — narrative
+threads, injuries surfaced in news, broader storylines), inject a
+real-world news context blob into the prompt. Either via light web
+scraping or a Claude-with-web-search pre-pass. Same mechanism would
+benefit weekly digests once those land (FEAT-9).
+
+**TBD:** tool choice (Anthropic web search vs Brave Search API vs
+custom scraper), source trust + licensing, latency budget, cost per
+recap, prompt-injection defense.
+
+---
+
 ## Dependency map
 
 ```
@@ -2925,25 +3846,33 @@ After derivations, these light up:
 
 Also parallel-safe (each hits a different route + component).
 
-### Wave 5 — "tests, tidy, and the team-page digest"
+### Wave 5 — "the team-page digest"
 
 - DERIV-7 (per-team weekly digest pipeline) — must land before FEAT-9.
-- DERIV-8 (deprecate `gold_player_clutch`) — FEAT-7 cleanup. Quick
-  pipeline-side change; can land first or last.
-- FEAT-8 (milestone callouts on team page, rewrite) — uses DERIV-5
-  unchanged.
+- DERIV-8 (deprecate orphan gold tables) — FEAT-5/6/7 cleanup. Quick
+  pipeline-side change; agent prompt requires per-table user confirm.
 - FEAT-9 (weekly digest on team page) — needs DERIV-7.
-- FEAT-19 (milestone enrichment on recap cards) — uses DERIV-5
-  unchanged. Coordinates types with FEAT-8.
-- ARCH-5 (recap tests) — drop in at any point once pipeline is
-  stable.
-- FEAT-12 (player hyperlinks) — can be done earlier; slot when
-  there's appetite.
-- FEAT-18 (trajectory window zoom) — can land anytime but feels
-  most useful once historical backfill (PIPE-3) lets you zoom
-  into prior months.
-- ARCH-2 (progressive disclosure) — ship only if the team page
-  feels too dense after Wave 4.
+- FEAT-12 (player hyperlinks in recap text) — can be done anytime;
+  slot when there's appetite.
+
+(ARCH-2 and ARCH-5 abandoned — see ticket headers. FEAT-8 and
+FEAT-19 merged to main during Wave 4 review cycle.)
+
+### Wave 6+ — "stubs awaiting flesh-out"
+
+Stubs added 2026-04-29; bodies are intentionally light, fill in when
+ready to dispatch.
+
+- DERIV-9 (recap LLM enrichment with real-world news) — biggest of
+  the bunch; ties to the long-running "scrape news for recap context"
+  idea in `make_it_impressive.md`.
+- PIPE-5 (sportsbook odds — replace / augment Elo) — pipeline +
+  schema work; downstream surface ticket TBD.
+- FEAT-18 (trajectory window zoom) — moved here from Wave 5 since
+  it's not blocking anything.
+- FEAT-20 (animate prior-year comparison line)
+- FEAT-21 (matchup panel load time)
+- FEAT-22 (matchup spark plots: stop the snap-in)
 
 ---
 
