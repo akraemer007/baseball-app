@@ -28,6 +28,15 @@ resources:
           default: ""
         - name: recap_recent_days
           default: "3"
+        # Storyline parameters — generate_storylines runs after
+        # generate_recaps. Default empty target_date → "yesterday in
+        # America/New_York" inside the script.
+        - name: storyline_force
+          default: "false"
+        - name: storyline_target_date
+          default: ""
+        - name: storyline_only_teams
+          default: ""
       tasks:
         - task_key: ingest_schedule_and_games
           notebook_task:
@@ -152,6 +161,24 @@ resources:
               force: "{{job.parameters.recap_force}}"
               target_date: "{{job.parameters.recap_target_date}}"
               recent_days: "{{job.parameters.recap_recent_days}}"
+          environment_key: default_env
+
+        - task_key: generate_storylines
+          # Daily team storylines (DERIV-11). NOT-EXISTS gated on
+          # (team_id, generated_for_date) so most hourly runs are
+          # no-ops; the first run after midnight ET writes the day's
+          # rows. Cost target: ~$1/month at 30 teams × 1 day.
+          depends_on:
+            - task_key: generate_recaps
+          notebook_task:
+            notebook_path: ../jobs/storylines/generate_storylines.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              endpoint: ${var.foundation_model_endpoint}
+              force: "{{job.parameters.storyline_force}}"
+              target_date: "{{job.parameters.storyline_target_date}}"
+              only_teams: "{{job.parameters.storyline_only_teams}}"
           environment_key: default_env
 
       environments:
