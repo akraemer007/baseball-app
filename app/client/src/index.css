@@ -773,6 +773,32 @@ table.stat-table td.top-performer {
   }
 }
 
+/* Three-column layout for the batting card (Slash / Advanced /
+   Production). Each column has its own small label + percentile-row
+   stack underneath. Stacks to one column on phones. */
+.percentile-columns-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+.percentile-column-label {
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-dim) 60%, transparent);
+}
+.percentile-column .percentile-row {
+  margin-bottom: 0.75rem;
+}
+@media (max-width: 720px) {
+  .percentile-columns-3 {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
 /* "Advanced" sub-row below the main 2-col grid in the batting card.
    Three stats (xBA / wOBA / xwOBA) render in a 3-col grid so the
    slashline-vs-totals symmetry of the main grid stays intact. */

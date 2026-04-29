@@ -44,6 +44,20 @@ const CATEGORY_TITLES: Record<'batting' | 'pitching' | 'fielding', string> = {
 };
 
 /**
+ * Three-column layout for the batting card. Slash line on the left,
+ * contact-quality + index stats in the middle, counting stats + per-game
+ * rates on the right. Stacks to one column at narrow viewports (CSS).
+ *
+ * Stats not listed here for the `batting` category are dropped on the
+ * floor — keep this in sync with whatever ships in `percentileStats`.
+ */
+const BATTING_COLUMNS: ReadonlyArray<{ label: string; keys: readonly string[] }> = [
+  { label: 'Slash',      keys: ['avg', 'obp', 'slg', 'ops'] },
+  { label: 'Advanced',   keys: ['xba', 'woba', 'xwoba', 'ops_plus'] },
+  { label: 'Production', keys: ['hits_total', 'hr_total', 'walks_total', 'runs_per_game', 'hr_per_game'] },
+];
+
+/**
  * Explicit display order. The list uses CSS multi-columns on desktop,
  * which fills column 1 top-to-bottom before column 2 — so consecutive
  * indices stay grouped together. Rates come first (slash line +
@@ -421,120 +435,105 @@ export default function TeamPage() {
             (a, b) =>
               (STAT_ORDER[a.statKey] ?? 999) - (STAT_ORDER[b.statKey] ?? 999),
           );
-        // Hold the three contact-quality stats out of the main 2-col
-        // grid so the rates-left / totals-right symmetry survives the
-        // addition. They render as a horizontal "Advanced" sub-row
-        // below the main grid in the explicit order xba → woba → xwoba.
-        const ADVANCED_BATTING = ['xba', 'woba', 'xwoba'] as const;
-        const isAdvanced = (key: string): boolean =>
-          cat === 'batting' &&
-          (ADVANCED_BATTING as readonly string[]).includes(key);
-        const rows = allRows.filter((s) => !isAdvanced(s.statKey));
-        const advancedRows =
-          cat === 'batting'
-            ? ADVANCED_BATTING.map((key) =>
-                allRows.find((s) => s.statKey === key),
-              ).filter((s): s is NonNullable<typeof s> => s !== undefined)
-            : [];
-        if (!rows.length && !advancedRows.length) return null;
+        if (!allRows.length) return null;
+
+        // Shared PercentileRow props so the column / fallback render
+        // sites don't repeat 15 lines of plumbing each.
+        const renderRow = (s: PercentileStat) => (
+          <PercentileRow
+            key={s.statKey}
+            stat={s}
+            season={season}
+            teamColor={team.color}
+            currentTeamAbbrev={team.id}
+            primaryTeamAbbrev={primaryTeam}
+            secondaryTeamAbbrev={secondaryTeam}
+            comparisonTeam={
+              comparisonInfo
+                ? {
+                    abbrev: comparisonInfo.team.id,
+                    name: comparisonInfo.team.name,
+                    color: comparisonInfo.team.color,
+                  }
+                : null
+            }
+            scope={statScope}
+            teamLeague={teamLeague}
+            teamLeagueMap={teamLeagueMap}
+            distribution={bulkDistQ.data?.distributions[s.statKey]}
+            isOpen={expandedStat === s.statKey}
+            onToggle={() =>
+              setExpandedStat(expandedStat === s.statKey ? null : s.statKey)
+            }
+            onSelectComparison={handleSelectCompareTeam}
+          />
+        );
+
         const scopeTag = statScope === 'league' && teamLeague ? teamLeague : 'MLB';
-        return (
-          <div key={cat} className="card">
-            <h3 className="stat-card-title">
-              <span>
-                {CATEGORY_TITLES[cat]} vs.{' '}
-                <span className="muted mono" style={{ fontWeight: 500 }}>
-                  {scopeTag}
-                </span>
+        const header = (
+          <h3 className="stat-card-title">
+            <span>
+              {CATEGORY_TITLES[cat]} vs.{' '}
+              <span className="muted mono" style={{ fontWeight: 500 }}>
+                {scopeTag}
               </span>
-              {teamLeague && (
-                <div className="scope-toggle mono">
-                  <button
-                    type="button"
-                    onClick={() => setStatScope('mlb')}
-                    data-active={statScope === 'mlb'}
-                  >
-                    All MLB
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatScope('league')}
-                    data-active={statScope === 'league'}
-                  >
-                    {teamLeague}
-                  </button>
-                </div>
-              )}
-            </h3>
-            <div className="percentile-list percentile-list-wide">
-              {rows.map((s) => (
-                <PercentileRow
-                  key={s.statKey}
-                  stat={s}
-                  season={season}
-                  teamColor={team.color}
-                  currentTeamAbbrev={team.id}
-                  primaryTeamAbbrev={primaryTeam}
-                  secondaryTeamAbbrev={secondaryTeam}
-                  comparisonTeam={
-                    comparisonInfo
-                      ? {
-                          abbrev: comparisonInfo.team.id,
-                          name: comparisonInfo.team.name,
-                          color: comparisonInfo.team.color,
-                        }
-                      : null
-                  }
-                  scope={statScope}
-                  teamLeague={teamLeague}
-                  teamLeagueMap={teamLeagueMap}
-                  distribution={bulkDistQ.data?.distributions[s.statKey]}
-                  isOpen={expandedStat === s.statKey}
-                  onToggle={() =>
-                    setExpandedStat(expandedStat === s.statKey ? null : s.statKey)
-                  }
-                  onSelectComparison={handleSelectCompareTeam}
-                />
-              ))}
-            </div>
-            {advancedRows.length > 0 && (
-              <div className="advanced-stats">
-                <div className="advanced-stats-label muted mono">Advanced</div>
-                <div className="percentile-list percentile-list-advanced">
-                  {advancedRows.map((s) => (
-                    <PercentileRow
-                      key={s.statKey}
-                      stat={s}
-                      season={season}
-                      teamColor={team.color}
-                      currentTeamAbbrev={team.id}
-                      primaryTeamAbbrev={primaryTeam}
-                      secondaryTeamAbbrev={secondaryTeam}
-                      comparisonTeam={
-                        comparisonInfo
-                          ? {
-                              abbrev: comparisonInfo.team.id,
-                              name: comparisonInfo.team.name,
-                              color: comparisonInfo.team.color,
-                            }
-                          : null
-                      }
-                      scope={statScope}
-                      teamLeague={teamLeague}
-                      teamLeagueMap={teamLeagueMap}
-                      distribution={bulkDistQ.data?.distributions[s.statKey]}
-                      isOpen={expandedStat === s.statKey}
-                      onToggle={() =>
-                        setExpandedStat(
-                          expandedStat === s.statKey ? null : s.statKey,
-                        )
-                      }
-                      onSelectComparison={handleSelectCompareTeam}
-                    />
-                  ))}
-                </div>
+            </span>
+            {teamLeague && (
+              <div className="scope-toggle mono">
+                <button
+                  type="button"
+                  onClick={() => setStatScope('mlb')}
+                  data-active={statScope === 'mlb'}
+                >
+                  All MLB
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatScope('league')}
+                  data-active={statScope === 'league'}
+                >
+                  {teamLeague}
+                </button>
               </div>
             )}
+          </h3>
+        );
+
+        // Batting renders as three side-by-side columns (Slash /
+        // Advanced / Production); pitching + fielding keep the
+        // existing 2-col flow so we don't churn cards that aren't
+        // ready to be re-bucketed yet.
+        if (cat === 'batting') {
+          const byKey = new Map(allRows.map((s) => [s.statKey, s]));
+          const groups = BATTING_COLUMNS.map((g) => ({
+            label: g.label,
+            rows: g.keys
+              .map((k) => byKey.get(k))
+              .filter((s): s is PercentileStat => !!s),
+          })).filter((g) => g.rows.length > 0);
+          return (
+            <div key={cat} className="card">
+              {header}
+              <div className="percentile-columns-3">
+                {groups.map((g) => (
+                  <div key={g.label} className="percentile-column">
+                    <div className="percentile-column-label muted mono">
+                      {g.label}
+                    </div>
+                    <div className="percentile-list">{g.rows.map(renderRow)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div key={cat} className="card">
+            {header}
+            <div className="percentile-list percentile-list-wide">
+              {allRows.map(renderRow)}
+            </div>
           </div>
         );
       })}
