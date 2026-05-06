@@ -234,6 +234,12 @@ def build_interest_input(row) -> dict:
         "home_key_batters": _parse_json_col(row.home_key_batters_json),
         "away_key_batters": _parse_json_col(row.away_key_batters_json),
         "starting_pitchers": _parse_json_col(row.starting_pitchers_json),
+        # Last-play attribution from silver_play — present for any game
+        # whose play-by-play has ingested. Used by `_spine_walkoff` to
+        # name the actual walk-off hitter rather than the best line.
+        "walkoff_player_name": getattr(row, "walkoff_player_name", None),
+        "walkoff_event_type":  getattr(row, "walkoff_event_type", None),
+        "walkoff_description": getattr(row, "walkoff_description", None),
     }
 
 
@@ -315,6 +321,21 @@ for g in scored:
         "interest_score": g["interest_score"],
         "recap_length": g["recap_length"],
         "series_context": g["series"],
+        # For walk-off games: the actual final-play description so the
+        # writer can reference the real play (HR vs single vs sac fly)
+        # rather than guessing from the key-batters list. Null for
+        # non-walk-offs and any game whose silver_play hasn't ingested.
+        **(
+            {
+                "walkoff_play": {
+                    "player": g.get("walkoff_player_name"),
+                    "event": g.get("walkoff_event_type"),
+                    "description": g.get("walkoff_description"),
+                }
+            }
+            if g["game_type"] == "walkoff" and g.get("walkoff_player_name")
+            else {}
+        ),
     }
 
     try:

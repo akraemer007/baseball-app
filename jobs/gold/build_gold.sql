@@ -582,6 +582,33 @@ starters_json AS (
     LEFT JOIN silver_player_season ps
            ON ps.player_id = s.player_id AND ps.season = s.season
     GROUP BY s.game_pk
+),
+-- The very last play of every game. For walk-offs this is the play
+-- that scored the winning run; for non-walk-offs it's just the
+-- final-out play. interest.py only consults this when its walkoff
+-- classifier fires, so non-walk-off rows are harmless. Fixes a bug
+-- where the spine used `_pick_top_batter` (best game-line batter) and
+-- routinely misattributed walk-offs to a slugger who'd hit a multi-
+-- run HR earlier rather than the actual winning-run batter.
+last_play AS (
+    SELECT
+        p.game_pk,
+        p.batter_id,
+        p.event AS walkoff_event_type,
+        p.description AS walkoff_description,
+        ROW_NUMBER() OVER (PARTITION BY p.game_pk ORDER BY p.play_index DESC) AS rn
+    FROM silver_play p
+),
+walkoff_event AS (
+    SELECT
+        lp.game_pk,
+        b.player_name AS walkoff_player_name,
+        lp.walkoff_event_type,
+        lp.walkoff_description
+    FROM last_play lp
+    LEFT JOIN silver_player_game_batting b
+           ON b.game_pk = lp.game_pk AND b.player_id = lp.batter_id
+    WHERE lp.rn = 1
 )
 SELECT
     g.game_pk,
@@ -617,7 +644,12 @@ SELECT
     -- key performers
     coalesce(hb.batters_json, '[]') AS home_key_batters_json,
     coalesce(ab.batters_json, '[]') AS away_key_batters_json,
-    coalesce(sp.starting_pitchers_json, '[]') AS starting_pitchers_json
+    coalesce(sp.starting_pitchers_json, '[]') AS starting_pitchers_json,
+    -- last play of the game — sourced for walk-off attribution; null
+    -- when silver_play hasn't ingested for this game yet
+    we.walkoff_player_name,
+    we.walkoff_event_type,
+    we.walkoff_description
 FROM silver_game g
 JOIN silver_team ht ON ht.team_id = g.home_team_id
 JOIN silver_team at ON at.team_id = g.away_team_id
@@ -630,6 +662,7 @@ LEFT JOIN gold_game_elo e ON e.game_pk = g.game_pk
 LEFT JOIN key_batters hb ON hb.game_pk = g.game_pk AND hb.team_id = g.home_team_id
 LEFT JOIN key_batters ab ON ab.game_pk = g.game_pk AND ab.team_id = g.away_team_id
 LEFT JOIN starters_json sp ON sp.game_pk = g.game_pk
+LEFT JOIN walkoff_event we ON we.game_pk = g.game_pk
 WHERE g.game_type = 'R' AND g.status = 'Final';
 
 -- ==========================================================================

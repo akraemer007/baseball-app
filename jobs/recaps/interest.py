@@ -156,8 +156,20 @@ def _classify_blowout(game: dict, innings: list[dict]) -> bool:
 
 
 def _spine_walkoff(game: dict, batters: list[dict], innings: list[dict]) -> str:
-    top = _pick_top_batter(batters)
-    player = top.get("player_name") if top else game["winner_team"]
+    # Prefer the actual walk-off hitter — sourced from the last play of
+    # the game via gold_game_recap_input's walkoff_player_name field.
+    # The previous _pick_top_batter heuristic ranked by RBI/HR/etc.,
+    # which routinely misattributed walk-offs to whoever hit a multi-
+    # run shot earlier in the game (e.g. a 3-RBI line beat out the
+    # 1-RBI walk-off solo HR). Falls back to _pick_top_batter when the
+    # play data is missing — old backfill rows or live games where
+    # silver_play hasn't ingested yet.
+    actual = (game.get("walkoff_player_name") or "").strip()
+    if actual:
+        player: str = actual
+    else:
+        top = _pick_top_batter(batters)
+        player = top.get("player_name") if top else game["winner_team"]
     final_inn = max((_int(i.get("inning")) for i in innings), default=9)
     return f"{player} walked it off in the {_ordinal(final_inn)}"
 
