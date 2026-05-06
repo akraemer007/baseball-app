@@ -4593,3 +4593,10 @@ ready.
   source trust, cost).
 - **Shareable PNG recap cards (D.4)** — user said meh; left as a
   "might bring back" footnote only.
+
+## New Ideas that need tasks
+- clean up backlog so you don't drown in context
+- Put simplifed game summary in tooltip. (who played, score). Debate if clicking just takes you straight to box
+- maybe put game summary as tooltip in last 10 games?
+- Milsetones should not just say year but also month
+- Make it so I can do compare to last 14 days
