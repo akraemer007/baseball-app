@@ -400,7 +400,7 @@ def fetch_head_to_head(team_id: int) -> list[dict]:
             "games": int(r["games"]),
             "wins": int(r["wins"]),
             "losses": int(r["losses"]),
-            "dates": [str(d) for d in (r["dates"] or [])],
+            "dates": [str(d) for d in (r["dates"] if r["dates"] is not None else [])],
         }
         for _, r in df.iterrows()
     ]
