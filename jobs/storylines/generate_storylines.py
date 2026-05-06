@@ -360,6 +360,52 @@ def fetch_rolling_pitching(team_id: int) -> list[dict]:
     return out
 
 
+def fetch_head_to_head(team_id: int) -> list[dict]:
+    """Per-opponent record over the team_day window. Pre-computed so
+    the LLM doesn't have to count series wins/losses by hand from
+    `recent_recaps` — past prompts said "swept N straight from X" or
+    "beat X 4 in a row" when the actual count was lower (the model
+    conflated overall winning streak with per-opponent record). The
+    payload field is the source of truth for any series-record claim
+    the prose makes."""
+    df = spark.sql(f"""
+        WITH team_games AS (
+          SELECT g.game_pk, g.game_date,
+                 CASE WHEN g.home_team_id = {team_id} THEN g.away_team_id
+                      ELSE g.home_team_id END AS opp_id,
+                 CASE WHEN g.winner_team_id = {team_id} THEN 1 ELSE 0 END AS is_win,
+                 CASE WHEN g.winner_team_id = {team_id} OR g.winner_team_id IS NOT NULL THEN 1 ELSE 0 END AS is_decided
+            FROM {fq}.silver_game g
+           WHERE g.game_type = 'R' AND g.status = 'Final'
+             AND ({team_id} IN (g.home_team_id, g.away_team_id))
+             AND g.game_date BETWEEN '{team_day_start.isoformat()}'
+                                 AND '{target_date.isoformat()}'
+             AND g.winner_team_id IS NOT NULL
+        )
+        SELECT t.abbrev AS opp_abbrev,
+               t.name   AS opp_name,
+               COUNT(*)              AS games,
+               SUM(tg.is_win)        AS wins,
+               COUNT(*) - SUM(tg.is_win) AS losses,
+               collect_list(CAST(tg.game_date AS STRING)) AS dates
+          FROM team_games tg
+          JOIN {fq}.silver_team t ON t.team_id = tg.opp_id
+         GROUP BY t.abbrev, t.name
+         ORDER BY games DESC, opp_abbrev
+    """).toPandas()
+    return [
+        {
+            "opponent_abbrev": str(r["opp_abbrev"]),
+            "opponent_name": str(r["opp_name"]),
+            "games": int(r["games"]),
+            "wins": int(r["wins"]),
+            "losses": int(r["losses"]),
+            "dates": [str(d) for d in (r["dates"] or [])],
+        }
+        for _, r in df.iterrows()
+    ]
+
+
 def assemble_payload(team_row) -> dict:
     team_id = int(team_row.team_id)
     return {
@@ -370,6 +416,7 @@ def assemble_payload(team_row) -> dict:
         "team_day_last_14": fetch_team_day_window(team_id),
         "recent_milestones": fetch_recent_milestones(team_id),
         "recent_recaps": fetch_recent_recaps(team_id),
+        "head_to_head_14d": fetch_head_to_head(team_id),
         "rolling_batting_14d": fetch_rolling_batting(team_id),
         "rolling_pitching_14d": fetch_rolling_pitching(team_id),
     }
@@ -384,6 +431,7 @@ for _, team_row in target_teams.iterrows():
         f"team_day={len(payload['team_day_last_14'])}, "
         f"milestones={len(payload['recent_milestones'])}, "
         f"recaps={len(payload['recent_recaps'])}, "
+        f"h2h={len(payload['head_to_head_14d'])}, "
         f"bat={len(payload['rolling_batting_14d'])}, "
         f"pit={len(payload['rolling_pitching_14d'])}"
     )

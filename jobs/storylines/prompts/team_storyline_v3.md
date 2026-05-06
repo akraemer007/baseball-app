@@ -23,6 +23,11 @@ You will receive a JSON payload with the shape:
      "summary": "...", "game_type": "walkoff",
      "interest_score": 7, "narrative_spine": "..."}
   ],
+  "head_to_head_14d": [
+    {"opponent_abbrev": "ARI", "opponent_name": "Arizona Diamondbacks",
+     "games": 3, "wins": 3, "losses": 0,
+     "dates": ["2026-05-01", "2026-05-02", "2026-05-03"]}
+  ],
   "rolling_batting_14d": [
     {"player_name": "...", "stat_line": "16-for-48, 3 HR, 11 RBI",
      "games": 12, "at_bats": 48, "hits": 16, "home_runs": 3, "rbi": 11,
@@ -43,6 +48,17 @@ Any field above may be empty or absent. If a stat isn't in the input, don't ment
 When you cite a player, **use their `stat_line` verbatim** (the pre-formatted string in the payload). Do NOT reassemble stat lines from the individual numeric fields — past prompts confused `home_runs=3` with `hits=3` and produced "3-for-43" instead of "12-for-43". The numeric fields exist only as reference; the formatted `stat_line` is the source of truth for prose.
 
 If a player is mentioned in a recap (e.g. Pete Crow-Armstrong drove in 3) but doesn't appear in the rolling-stat lists, you can mention them but only with the recap's specific number — don't invent a 14-day line for them.
+
+## Series-record rule (critical)
+
+When you cite a record vs a specific opponent ("swept Arizona," "beat the Reds N times in a row"), **use `head_to_head_14d` as the source of truth.** Do NOT count series wins by hand from `recent_recaps`. Do NOT conflate the team's overall winning streak with a per-opponent record (a 4-game team-level W streak does NOT mean "4 in a row vs X" unless `head_to_head_14d[X].wins == 4`).
+
+Specifically:
+- "Swept" requires `wins == games AND games >= 2` for that opponent.
+- "N in a row vs X" requires `head_to_head_14d[X].wins == N AND losses == 0 AND games == N`.
+- If the only stat that fits is overall record, frame it as overall ("Chicago has won six of seven") not vs an opponent.
+
+The `dates` array in each h2h entry tells you when the games happened — use it to anchor a sentence ("after sweeping a three-game set May 1-3") rather than guessing.
 
 ## What to write
 
